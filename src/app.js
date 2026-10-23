@@ -37,6 +37,8 @@
     satView: [],        // кто сейчас над горизонтом
     passes: [],
     tle: null,          // когда и откуда пришли орбиты
+    planes: { list: [], view: [], src: '', receivedMs: 0, error: '', busy: false,
+      on: store.get('planes') !== false, proxy: PLANES_PROXY || store.get('planesProxy') || '' },
     satOpts: { bright: store.get('satBright') !== false, starlink: store.get('satStarlink') === true },
   };
 
@@ -174,6 +176,8 @@
       hits.push({ x, y, key: 'p:' + pl.id, obj: pl, kind: 'planet' });
     }
 
+    drawPlanes(hits);
+
     // Солнце
     if (snap.sun.alt > -1) {
       const [x, y] = project(Math.max(snap.sun.alt, 0), snap.sun.az);
@@ -264,6 +268,77 @@
     }
   }
 
+  // ---------- самолёты ----------
+  const PLANE_C = '#ff9f7a';
+  const planesLive = () => Math.abs(state.offsetMin) <= 2;      // самолёты бывают только «сейчас»
+  const planeObs = () => ({ lat: state.place.lat, lon: state.place.lon });
+  function drawPlanes(hits) {
+    const P = state.planes;
+    P.view = [];
+    if (!P.on || !P.list.length || !planesLive()) return;
+    const t = nowMs(), obs = planeObs();
+    P.view = planeSky(P.list, t, obs);
+    ctx.font = `${Math.max(9, size * 0.018)}px "Golos Text", sans-serif`; ctx.textAlign = 'left';
+    for (const v of P.view) {
+      const pl = v.plane, [x, y] = project(v.alt, v.az);
+      // острие смотрит туда, где самолёт будет через 20 секунд
+      const ahead = planeAt(pl, t + 20000, obs);
+      let ang = -Math.PI / 2;
+      if (ahead) { const [x2, y2] = project(Math.max(ahead.alt, 0), ahead.az); if (Math.hypot(x2 - x, y2 - y) > 0.5) ang = Math.atan2(y2 - y, x2 - x); }
+      const s = (/A[345]/.test(pl.category) ? 7 : 5.5) * Math.max(1, size / 620);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+      ctx.beginPath(); ctx.moveTo(s, 0); ctx.lineTo(-s * 0.75, s * 0.62); ctx.lineTo(-s * 0.35, 0); ctx.lineTo(-s * 0.75, -s * 0.62); ctx.closePath();
+      if (pl.dubious) { ctx.setLineDash([2, 2]); ctx.strokeStyle = PLANE_C; ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]); }
+      else { ctx.fillStyle = PLANE_C; ctx.fill(); }
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255,196,172,0.92)';
+      ctx.fillText(pl.call || pl.reg || pl.id, x + s + 4, y + s * 0.9);
+      hits.push({ x, y, key: 'pl:' + pl.id, obj: v, kind: 'plane' });
+    }
+  }
+
+  const SOURCE_LINKS = { 'adsb.fi': 'https://adsb.fi', 'adsb.lol': 'https://adsb.lol' };
+  function planesPanel() {
+    const P = state.planes, st = $('#planesStatus'), form = $('#proxyForm');
+    form.hidden = !!P.proxy && !P.error;
+    if (!P.on) { st.textContent = ''; $('#planesList').innerHTML = ''; return; }
+    if (!P.proxy) {
+      $('#planesList').innerHTML = '';
+      st.textContent = 'Самолёты приходят через посредника — маленькую бесплатную программу на Cloudflare (её код в папке worker/). Вставь сюда её адрес.';
+      return;
+    }
+    if (!planesLive()) { $('#planesList').innerHTML = ''; st.textContent = 'Самолёты видны только в режиме «Сейчас»: их будущее никто не знает.'; return; }
+    if (P.error && !P.list.length) { $('#planesList').innerHTML = ''; st.textContent = `Посредник не ответил (${P.error}). Пробую каждые 5 секунд; если не пройдёт — проверь адрес.`; return; }
+    const near = P.view.slice().sort((a, b) => a.range - b.range).slice(0, 6);
+    $('#planesList').innerHTML = near.length ? near.map(v => {
+      const pl = v.plane;
+      const trend = pl.rate > 400 ? ', набирает высоту' : pl.rate < -400 ? ', снижается' : '';
+      return `<li><button class="row" data-key="pl:${pl.id}">
+        <span class="row-name">${pl.call || pl.reg || pl.id}${pl.airline ? ` · ${pl.airline}` : ''}</span>
+        <span class="row-line">${pl.type || 'тип неизвестен'}. Высота ${fmt(v.h / 1000, 1)} км${trend}, до него ${fmt(v.range)} км. ${fmt(v.alt)}° над горизонтом, ${rumbWord(v.az)}</span></button></li>`;
+    }).join('') : '<li class="note">Над горизонтом сейчас самолётов нет.</li>';
+    const ago = Math.round((Date.now() - P.receivedMs) / 1000);
+    const link = SOURCE_LINKS[P.src];
+    st.innerHTML = `Данные: ${link ? `<a href="${link}" target="_blank" rel="noopener">${P.src}</a>` : 'ADS-B'}, ${ago} с назад. `
+      + `В радиусе ~110 км: ${P.list.filter(x => !x.onGround).length}, над горизонтом: ${P.view.length}.`
+      + (P.error ? ' Последний запрос не прошёл, показываю прошлые данные.' : '');
+  }
+
+  async function pollPlanes() {
+    const P = state.planes;
+    if (!P.on || !P.proxy || P.busy || document.hidden || !planesLive()) return;
+    P.busy = true;
+    try {
+      const r = await fetchPlanes(P.proxy, state.place.lat, state.place.lon);
+      P.list = r.planes; P.src = r.src; P.receivedMs = r.receivedMs; P.error = '';
+    } catch (e) {
+      P.error = e.name === 'TimeoutError' ? 'нет ответа' : e.message;
+      if (Date.now() - P.receivedMs > PLANE_MAX_AGE * 1000) P.list = [];
+    }
+    P.busy = false;
+    render(); planesPanel();
+  }
+
   function drawMoon(x, y, r, moon, sunAngle) {
     ctx.save(); ctx.translate(x, y); ctx.rotate(sunAngle);
     ctx.fillStyle = '#2b2f3a'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
@@ -284,6 +359,11 @@
     if (sel.key === 'moon') return { kind: 'moon', obj: s.moon };
     if (sel.key.startsWith('p:')) return { kind: 'planet', obj: s.planets.find(p => 'p:' + p.id === sel.key) };
     if (sel.key.startsWith('s:')) return { kind: 'star', obj: s.stars.find(t => 's:' + t.n === sel.key) };
+    if (sel.key.startsWith('pl:')) {
+      const pl = state.planes.list.find(x => 'pl:' + x.id === sel.key);
+      const l = pl && planesLive() && planeAt(pl, nowMs(), planeObs());
+      return { kind: 'plane', obj: l && { ...l, plane: pl, name: pl.call || pl.reg || pl.id } };
+    }
     if (sel.key.startsWith('sat:')) {
       const id = sel.key.slice(4), sat = state.sats.find(x => x.id === id) || state.starlink.find(x => x.id === id);
       if (!sat) return null;
@@ -298,10 +378,11 @@
     return m < 60 ? m + ' мин' : Math.floor(m / 60) + ' ч ' + (m % 60) + ' мин';
   }
   function fillCard() {
-    const f = findSelected(); if (!f || !f.obj) return;
+    const f = findSelected();
+    if (!f || !f.obj) { if (state.selected.key.startsWith('pl:')) $('#card').hidden = true; return; }
     const o = f.obj, card = $('#card');
     const where = o.alt >= 0
-      ? f.kind === 'sat' ? `${fmt(o.alt)}° над горизонтом, ${rumbWord(o.az)} (азимут ${fmt(o.az)}°)` : `Высота ${fmt(o.alt)}°, ${rumbWord(o.az)} (азимут ${fmt(o.az)}°)`
+      ? f.kind === 'sat' || f.kind === 'plane' ? `${fmt(o.alt)}° над горизонтом, ${rumbWord(o.az)} (азимут ${fmt(o.az)}°)` : `Высота ${fmt(o.alt)}°, ${rumbWord(o.az)} (азимут ${fmt(o.az)}°)`
       : `Сейчас под горизонтом (${fmt(o.alt)}°)`;
     let kind = '', facts = [], text = '';
     if (f.kind === 'sun') {
@@ -317,6 +398,20 @@
         ['Расстояние', o.distAU * 149.6 >= 1000 ? `${fmt(o.distAU * 0.1496, 2)} млрд км` : `${fmt(o.distAU * 149.6)} млн км`],
         ['Свет идёт', lightTime(o.distAU * 499)], ['От Солнца на небе', `${fmt(o.elong)}°`]);
       if (o.elong < 15) text += ' Сейчас она слишком близко к Солнцу и тонет в его лучах.';
+    } else if (f.kind === 'plane') {
+      const pl = o.plane;
+      kind = pl.category === 'A7' ? 'Вертолёт' : 'Самолёт';
+      if (pl.airline) facts.push(['Авиакомпания', pl.airline]);
+      if (pl.type) facts.push(['Тип', pl.type + (pl.reg ? `, борт ${pl.reg}` : '')]);
+      const trend = pl.rate > 400 ? ' и набирает' : pl.rate < -400 ? ' и снижается' : '';
+      facts.push(['Высота полёта', `${fmt(o.h)} м${trend}`], ['Скорость', `${fmt(pl.gs * 1.852)} км/ч`],
+        ['До него', `${fmt(o.range, 1)} км`]);
+      if (pl.track != null) facts.push(['Летит на', rumbWord(pl.track)]);
+      facts.push(['Данные', `${fmt(Math.max(0, o.age))} с назад${pl.mlat ? ', место вычислено по времени прихода сигнала (MLAT)' : ''}`]);
+      text = 'Самолёт сам каждые полсекунды сообщает в эфир, кто он, где и на какой высоте (ADS-B). Эти сообщения ловят тысячи любительских антенн и складывают в общую карту. '
+        + 'Между обновлениями приложение двигает самолёт по его скорости и курсу — «упреждение», как у зенитчика.';
+      if (pl.dubious) text += ' Позиция под сомнением: похоже на помехи GPS. Над Израилем GPS часто глушат и подменяют, и самолёты на картах «прыгают» — сам самолёт летит ровно, врёт только его приёмник.';
+      if (pl.emergency && pl.emergency !== 'none') text += ' Экипаж передаёт сигнал тревоги.';
     } else if (f.kind === 'sat') {
       const s = o.sat, info = SAT_INFO[s.id];
       kind = info ? info.kind : { starlink: 'Спутник Starlink', rocket: 'Ступень ракеты', debris: 'Обломок', generic: 'Спутник' }[s.kind];
@@ -376,8 +471,8 @@
     return `${sign}${h ? h + ' ч ' : ''}${mm ? mm + ' мин' : ''}`.trim();
   }
   const range = $('#timeRange');
-  range.addEventListener('input', () => { stopPlay(); state.offsetMin = +range.value; render(); updateNowList(); });
-  $('#btnNow').addEventListener('click', () => { stopPlay(); state.offsetMin = 0; range.value = 0; render(); updateNowList(); });
+  range.addEventListener('input', () => { stopPlay(); state.offsetMin = +range.value; render(); updateNowList(); planesPanel(); });
+  $('#btnNow').addEventListener('click', () => { stopPlay(); state.offsetMin = 0; range.value = 0; render(); updateNowList(); planesPanel(); pollPlanes(); });
   function stopPlay() {
     if (state.playing) { clearInterval(state.playing); state.playing = null; $('#btnPlay').textContent = 'Ускорить ×3600'; $('#btnPlay').setAttribute('aria-pressed', 'false'); }
   }
@@ -480,7 +575,8 @@
     $('#placeLine').textContent = `${pl.name} · ${coordLine(pl)}`;
     $('#lat').value = pl.lat; $('#lon').value = pl.lon;
     document.querySelectorAll('.preset').forEach(b => b.setAttribute('aria-pressed', b.dataset.name === pl.name ? 'true' : 'false'));
-    render(); refreshPanel();
+    state.planes.list = []; state.planes.receivedMs = 0;
+    render(); refreshPanel(); pollPlanes();
   }
   $('#presets').innerHTML = PLACES.map(pl => `<button class="preset" data-name="${pl.name}" aria-pressed="false">${pl.name}</button>`).join('');
   $('#presets').addEventListener('click', e => {
@@ -567,6 +663,19 @@
     }
     satStatus(); render();
   }
+  $('#tgPlanes').checked = state.planes.on;
+  $('#tgPlanes').addEventListener('change', e => {
+    state.planes.on = e.target.checked; store.set('planes', e.target.checked);
+    render(); planesPanel(); pollPlanes();
+  });
+  $('#proxyUrl').value = state.planes.proxy;
+  $('#proxyForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = $('#proxyUrl').value.trim();
+    if (v && !/^(https:\/\/|http:\/\/localhost)\S+$/.test(v)) { $('#planesStatus').textContent = 'Адрес должен начинаться с https://'; return; }
+    state.planes.proxy = v; state.planes.error = ''; store.set('planesProxy', v);
+    planesPanel(); pollPlanes();
+  });
   $('#tgBright').checked = state.satOpts.bright;
   $('#tgStarlink').checked = state.satOpts.starlink;
   $('#tgBright').addEventListener('change', e => { state.satOpts.bright = e.target.checked; store.set('satBright', e.target.checked); render(); });
@@ -575,7 +684,7 @@
     if (e.target.checked && !state.starlink.length) loadStarlink(); else render();
   });
 
-  function refreshPanel() { const win = updateToday(); updateTonight(win); updateNowList(); updatePasses(); satStatus(); }
+  function refreshPanel() { const win = updateToday(); updateTonight(win); updateNowList(); updatePasses(); satStatus(); planesPanel(); }
 
   // ---------- старт ----------
   new ResizeObserver(() => resize()).observe(box);
@@ -584,6 +693,9 @@
   setInterval(() => { if (!state.playing) updateNowList(); }, 15000);
   setInterval(refreshPanel, 10 * 60000);
   loadSats();
+  pollPlanes();
+  setInterval(pollPlanes, 5000);                       // самолёты — раз в 5 секунд, между запросами упреждение
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollPlanes(); });
   if (state.satOpts.starlink) loadStarlink();
   setInterval(loadSats, 3 * 3600e3);                   // свежие орбиты раз в 3 часа
 })();
