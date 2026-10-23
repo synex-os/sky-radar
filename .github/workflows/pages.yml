@@ -36,42 +36,49 @@ jobs:
           touch _site/.nojekyll
 
       - name: Скачать орбиты
-        # Орбиты с CelesTrak. Не вышло — берём прошлую копию с нашего же сайта; для МКС, Тяньгуна и Хаббла есть запасной сервис.
+        # Орбиты с CelesTrak. Не вышло — прошлая копия с нашего сайта или запасной сервис tle.ivanstanojevic.me.
         run: |
           site="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data"
-          for g in visual stations starlink; do
+          celestrak() {   # CelesTrak принимает соединения через раз (бывает, полминуты) — пробуем настойчиво
+            curl -fsS -4 --connect-timeout 45 --max-time 240 --retry 4 --retry-all-errors --retry-delay 10 \
+              -A "sky-radar (github.com/${{ github.repository }})" \
+              "https://celestrak.org/NORAD/elements/gp.php?GROUP=$1&FORMAT=tle" -o "$2" 2>/tmp/err && grep -q '^1 ' "$2"
+          }
+          from_site() { curl -fsS --connect-timeout 15 --max-time 60 "$site/$1" -o "_site/data/$1" && grep -q '^1 ' "_site/data/$1"; }
+          why() { tail -n 1 /tmp/err | tr -d '\n'; }
+
+          for g in visual stations; do
             f="_site/data/$g.tle"
-            # CelesTrak принимает соединения через раз (бывает, подключение длится полминуты) — пробуем настойчиво
-            if curl -fsS -4 --connect-timeout 45 --max-time 240 --retry 4 --retry-all-errors --retry-delay 10 \
-                 -A "sky-radar (github.com/${{ github.repository }})" \
-                 "https://celestrak.org/NORAD/elements/gp.php?GROUP=$g&FORMAT=tle" -o "$f" 2>/tmp/err && grep -q '^1 ' "$f"; then
-              echo "::notice::$g: $(grep -c '^1 ' $f) орбит с CelesTrak"
-            elif why="$(tail -c 200 /tmp/err | tr '\n' ' ') $(head -c 120 "$f" 2>/dev/null | tr '\n' ' ')" \
-                 && curl -fsS --connect-timeout 15 --max-time 60 "$site/$g.tle" -o "$f" && grep -q '^1 ' "$f"; then
-              echo "::warning::$g: CelesTrak не ответил ($why), оставляю прошлую копию с сайта"
+            if celestrak "$g" "$f"; then echo "::notice::$g: $(grep -c '^1 ' $f) орбит с CelesTrak"
+            elif from_site "$g.tle"; then echo "::warning::$g: CelesTrak не ответил ($(why)), оставляю прошлую копию"
             elif [ "$g" = stations ]; then
               : > "$f"
               for id in 25544 48274 20580; do
                 curl -fsS --connect-timeout 15 --max-time 30 "https://tle.ivanstanojevic.me/api/tle/$id" \
                   | python3 -c 'import json,sys; j=json.load(sys.stdin); print(j["name"]); print(j["line1"]); print(j["line2"])' >> "$f" || true
               done
-              if grep -q '^1 ' "$f"; then echo "::warning::stations: CelesTrak не ответил, $(grep -c '^1 ' $f) орбиты из запасного сервиса"
-              else rm -f "$f"; echo "::warning::stations: орбит нет ни из одного источника ($why)"; fi
-            else
-              rm -f "$f"
-              echo "::warning::$g: орбит нет ($why), браузер попробует CelesTrak сам"
-            fi
+              if grep -q '^1 ' "$f"; then echo "::warning::stations: $(grep -c '^1 ' $f) орбиты из запасного сервиса"
+              else rm -f "$f"; echo "::warning::stations: орбит нет ни из одного источника"; fi
+            else rm -f "$f"; echo "::warning::$g: орбит нет ($(why))"; fi
           done
 
-      - name: Временно — почему Starlink отвечает 403
-        continue-on-error: true
-        run: |
-          for u in "https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle" \
-                   "https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=json" \
-                   "https://celestrak.org/NORAD/elements/supplemental/sup-gp.php?FILE=starlink&FORMAT=tle"; do
-            r=$(curl -sS -4 --connect-timeout 45 -m 120 -o /tmp/b -w '%{http_code} %{size_download}B' "$u" 2>&1 || true)
-            echo "::notice::$u → $r, TLE=$(grep -c '^1 ' /tmp/b 2>/dev/null || echo 0), ответ: $(head -c 300 /tmp/b | tr '\n\r' '  ')"
-          done
+          # Starlink CelesTrak серверам GitHub не отдаёт (403). Запасной сервис отдаёт его 124 страницами,
+          # поэтому собираем раз в сутки, а между сборками держим прошлую копию.
+          f=_site/data/starlink.tle
+          if celestrak starlink "$f"; then
+            echo "::notice::starlink: $(grep -c '^1 ' $f) орбит с CelesTrak"; date +%s > _site/data/starlink.updated
+          else
+            age=$(( $(date +%s) - $(curl -fsS -m 30 "$site/starlink.updated" 2>/dev/null || echo 0) ))
+            if [ "$age" -lt 86400 ] && from_site starlink.tle; then
+              curl -fsS -m 30 "$site/starlink.updated" -o _site/data/starlink.updated
+              echo "::notice::starlink: копия с сайта, ей $((age / 3600)) ч"
+            elif timeout 25m python3 tools/fetch_starlink.py "$f"; then
+              echo "::notice::starlink: $(grep -c '^1 ' $f) орбит из запасного сервиса"; date +%s > _site/data/starlink.updated
+            elif from_site starlink.tle; then
+              curl -fsS -m 30 "$site/starlink.updated" -o _site/data/starlink.updated || true
+              echo "::warning::starlink: запасной сервис не ответил, оставляю копию ($((age / 3600)) ч)"
+            else rm -f "$f"; echo "::warning::starlink: орбит нет"; fi
+          fi
 
       - uses: actions/upload-pages-artifact@v3
         with:
