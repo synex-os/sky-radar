@@ -14,7 +14,7 @@ jobs:
         run: |
           probe() {
             local name="$1" url="$2"
-            local out; out=$(curl -sS -m 40 -D /tmp/h -o /tmp/b -w '%{http_code} %{size_download}B %{time_total}s' -H "Origin: https://synex-os.github.io" "$url" 2>&1)
+            local out; out=$(curl -sSL -m 40 -D /tmp/h -o /tmp/b -w '%{http_code} %{size_download}B %{time_total}s %{url_effective}' -H "Origin: https://synex-os.github.io" "$url" 2>&1 || true)
             local cors; cors=$(tr -d '\r' < /tmp/h 2>/dev/null | grep -i '^access-control-allow-origin' | cut -d' ' -f2)
             local tle; tle=$(grep -c '^1 ' /tmp/b 2>/dev/null || echo 0)
             echo "::notice::$name → $out, CORS=${cors:-нет}, TLE-строк=$tle, начало: $(head -c 160 /tmp/b 2>/dev/null | tr '\n\r' '  ')"
@@ -25,3 +25,15 @@ jobs:
           probe celestrak-com "https://celestrak.com/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle"
           probe celestrak-txt "https://celestrak.org/NORAD/elements/visual.txt"
           probe amsat "https://www.amsat.org/tle/current/nasabare.txt"
+          probe ivan-25544 "https://tle.ivanstanojevic.me/api/tle/25544"
+          curl -sS -m 60 "https://db.satnogs.org/api/tle/?format=json" -o /tmp/sn.json || true
+          python3 - <<'PY' || true
+          import json
+          d = json.load(open('/tmp/sn.json'))
+          names = [x.get('tle0', '') for x in d]
+          star = sum('STARLINK' in n for n in names)
+          rb = sum('R/B' in n for n in names)
+          print(f"::notice::satnogs: всего {len(d)}, Starlink {star}, ступеней {rb}, ключи {list(d[0].keys())}")
+          PY
+          curl -sSL -m 40 "https://tle.ivanstanojevic.me/api/tle/?search=STARLINK&page-size=100" -o /tmp/iv.json || true
+          python3 -c "import json; d=json.load(open('/tmp/iv.json')); print('::notice::ivan starlink: totalItems', d.get('totalItems'), 'на странице', len(d.get('member', [])), 'view', d.get('view'))" || true
