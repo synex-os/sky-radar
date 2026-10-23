@@ -72,12 +72,12 @@ jobs:
             if [ "$age" -lt 86400 ] && from_site starlink.tle; then
               curl -fsS -m 30 "$site/starlink.updated" -o _site/data/starlink.updated
               echo "::notice::starlink: копия с сайта, ей $((age / 3600)) ч"
-            elif timeout 25m python3 tools/fetch_starlink.py "$f"; then
-              echo "::notice::starlink: $(grep -c '^1 ' $f) орбит из запасного сервиса"; date +%s > _site/data/starlink.updated
+            elif timeout 25m python3 tools/fetch_starlink.py "$f" > /tmp/sl.log 2>&1; then
+              echo "::notice::starlink: $(grep -c '^1 ' $f) орбит из запасного сервиса. $(tail -n 2 /tmp/sl.log | tr '\n' ' ')"; date +%s > _site/data/starlink.updated
             elif from_site starlink.tle; then
               curl -fsS -m 30 "$site/starlink.updated" -o _site/data/starlink.updated || true
-              echo "::warning::starlink: запасной сервис не ответил, оставляю копию ($((age / 3600)) ч)"
-            else rm -f "$f"; echo "::warning::starlink: орбит нет"; fi
+              echo "::warning::starlink: запасной сервис не ответил ($(tail -n 2 /tmp/sl.log | tr '\n' ' ')), оставляю копию"
+            else rm -f "$f"; echo "::warning::starlink: орбит нет. Запасной сервис: $(tail -n 3 /tmp/sl.log 2>/dev/null | tr '\n' ' ')"; fi
           fi
 
       - name: Проверить посредника самолётов
@@ -86,7 +86,7 @@ jobs:
           r=$(curl -sS -m 30 -D /tmp/h -o /tmp/b -w '%{http_code}' -H "Origin: https://${{ github.repository_owner }}.github.io" \
             "https://sky-radar-planes.isratars.workers.dev/?lat=32.33&lon=34.86&dist=60" 2>&1 || true)
           cors=$(tr -d '\r' < /tmp/h | grep -i '^access-control-allow-origin' | cut -d' ' -f2)
-          info=$(python3 -c "import json; d=json.load(open('/tmp/b')); print('источник', d.get('src'), 'самолётов', len(d.get('ac', [])), d.get('error', ''), d.get('details', ''))" 2>&1 | tail -1)
+          info=$(python3 -c "import json; d=json.load(open('/tmp/b')); print('источник', d.get('src'), 'самолётов', len(d.get('ac', [])), 'пропущены', d.get('skipped', '?'), d.get('error', ''), d.get('details', ''))" 2>&1 | tail -1)
           echo "::notice::посредник самолётов → $r, CORS=${cors:-нет}, $info"
 
       - uses: actions/upload-pages-artifact@v3

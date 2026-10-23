@@ -52,7 +52,7 @@ export default {
         const r = await fetch(src.url(rl, ro, dist), { headers: { 'User-Agent': 'sky-radar (github.com/synex-os/sky-radar)' } });
         if (!r.ok) { errors.push(`${src.name}: ${r.status}`); continue; }
         const j = await r.json();
-        const body = JSON.stringify({ src: src.name, now: Date.now(), ac: (src.list(j) || []).filter(a => a.lat != null).map(slim) });
+        const body = JSON.stringify({ src: src.name, now: Date.now(), skipped: errors, ac: (src.list(j) || []).filter(a => a.lat != null).map(slim) });
         const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': `public, max-age=${CACHE_SECONDS}` };
         ctx.waitUntil(cache.put(key, new Response(body, { headers })));
         return new Response(body, { headers: { ...headers, ...cors(origin) } });

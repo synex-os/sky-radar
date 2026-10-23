@@ -32,9 +32,13 @@ def main(out_path):
     now = datetime.now(timezone.utc)
     first = get_page(1)
     pages = (first.get("totalItems", 0) + 99) // 100
-    seen, lines = set(), []
+    seen, lines, failed = set(), [], []
     for n in range(1, pages + 1):
-        data = first if n == 1 else get_page(n)
+        try:
+            data = first if n == 1 else get_page(n)
+        except Exception as e:  # одна упавшая страница — не повод выбрасывать остальные
+            failed.append(f"{n}: {e}")
+            continue
         for s in data.get("member", []):
             sid = s.get("satelliteId")
             epoch = datetime.fromisoformat(s["date"].replace("Z", "+00:00"))
@@ -43,8 +47,10 @@ def main(out_path):
             seen.add(sid)
             lines += [s["name"], s["line1"], s["line2"]]
         time.sleep(0.5)
-    if not seen:
-        sys.exit("ни одной свежей орбиты Starlink")
+    if failed:
+        print(f"не скачались страницы ({len(failed)} из {pages}): {'; '.join(failed[:3])}")
+    if len(failed) > pages // 5 or not seen:
+        sys.exit("слишком много страниц не скачалось — не сохраняю неполный Starlink")
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     print(f"{len(seen)} свежих орбит Starlink из {pages} страниц")
