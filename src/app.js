@@ -457,8 +457,10 @@
     card.querySelector('.card-kind').textContent = kind;
     card.querySelector('.card-name').textContent = o.name || o.n;
     card.querySelector('.card-where').textContent = where;
-    card.querySelector('.card-facts').innerHTML = facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
-    card.querySelector('.card-text').textContent = text;
+    // термины — ссылки в словарик; перерисовываем только если текст изменился, чтобы не сбивать нажатие
+    const setHtml = (el, html) => { if (el._html !== html) { el._html = html; el.innerHTML = html; } };
+    setHtml(card.querySelector('.card-facts'), facts.map(([k, v]) => `<div><dt>${linkTerms(k)}</dt><dd>${v}</dd></div>`).join(''));
+    setHtml(card.querySelector('.card-text'), linkTerms(text));
     card.hidden = false;
   }
   function select(key) {

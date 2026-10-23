@@ -129,6 +129,27 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
   background: color-mix(in srgb, var(--scope) 14%, transparent); }
 .ar-layers { margin: 0; background: rgba(6,10,21,.72); padding: 8px; border-radius: 12px; }
 .ar-layers[hidden] { display: none; }
+.term { font: inherit; color: inherit; background: none; border: 0; padding: 0; border-radius: 0; cursor: help;
+  text-decoration: underline dotted color-mix(in srgb, var(--scope) 70%, transparent); text-underline-offset: 3px; }
+.term:hover { color: var(--scope); }
+.sheet { position: fixed; inset: 0; z-index: 70; background: rgba(2,4,10,.55); display: flex; align-items: flex-end; justify-content: center; padding: 12px; }
+.sheet[hidden] { display: none; }
+.sheet-card { width: 100%; max-width: 520px; max-height: 80vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 16px; padding: 16px 18px 18px; box-shadow: 0 12px 40px rgba(0,0,0,.5); margin-bottom: env(safe-area-inset-bottom); }
+.sheet-card h3 { font-family: var(--font-display); font-size: 22px; margin: 0; }
+.sheet-card p { margin: 10px 0 0; color: #dbe3f2; }
+.sheet-card details { margin-top: 12px; border-top: 1px solid var(--rule); padding-top: 10px; }
+.sheet-card summary { cursor: pointer; color: var(--scope); }
+.sheet-card .layers { margin-top: 12px; }
+#tips { position: fixed; z-index: 65; left: 12px; right: 12px; top: max(64px, calc(env(safe-area-inset-top) + 64px));
+  display: grid; gap: 8px; justify-items: center; pointer-events: none; }
+.tip { pointer-events: auto; width: 100%; max-width: 480px; background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sat) 45%, var(--rule)); border-radius: 12px; padding: 10px 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 14px; animation: tipIn .3s ease-out; }
+.tip-act { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+.tip-act button { font-size: 13px; padding: 4px 10px; }
+@keyframes tipIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tip { animation: none; } }
 .toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 13.5px; }
 .toggles label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
 .toggles input { accent-color: var(--sat); width: 16px; height: 16px; margin: 0; }
@@ -197,7 +218,7 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
       <section class="block">
         <h2>Что увидеть этой ночью</h2>
         <ul class="rows" id="tonight"></ul>
-        <p class="note">Число рядом с названием — звёздная величина: чем меньше, тем ярче. Видно глазом примерно до 4 в городе и до 6 за городом.</p>
+        <p class="note" data-static>Число рядом с названием — звёздная величина: чем меньше, тем ярче. Видно глазом примерно до 4 в городе и до 6 за городом.</p>
       </section>
 
       <section class="block">
@@ -231,7 +252,14 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
           <li><span class="sw sw-plane"></span><span>Самолёты: острие показывает, куда летит. Пунктирный контур — позиция сомнительная (помехи GPS).</span></li>
           <li><span class="sw sw-line"></span><span>Фигуры созвездий: Большая Медведица, Орион, Кассиопея, Лебедь, Лев, Пегас и другие.</span></li>
         </ul>
-        <p class="note">Перемотай время ползунком или нажми «Ускорить»: увидишь, как всё небо вращается вокруг Полярной звезды.</p>
+        <p class="note" data-static>Перемотай время ползунком или нажми «Ускорить»: увидишь, как всё небо вращается вокруг Полярной звезды.</p>
+      </section>
+
+      <section class="block">
+        <h2>Словарик</h2>
+        <div class="layers" id="glossList"></div>
+        <div class="toggles"><label><input type="checkbox" id="tgTips"> Подсказывать, когда что-то происходит</label></div>
+        <p class="note">Подчёркнутые пунктиром слова в карточках тоже открывают словарик.</p>
       </section>
 
       <section class="block">
@@ -250,6 +278,17 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
       </section>
     </aside>
   </main>
+</div>
+
+<div id="tips" aria-live="polite"></div>
+<div id="gloss" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="glossTerm">
+  <div class="sheet-card">
+    <div class="card-head"><div><div class="card-kind">Словарик</div><h3 id="glossTerm"></h3></div>
+      <button id="glossClose" aria-label="Закрыть">×</button></div>
+    <p id="glossImage"></p>
+    <details id="glossMore"><summary>Как это считается</summary><p id="glossHow"></p></details>
+    <div class="layers" id="glossSee"></div>
+  </div>
 </div>
 
 <div id="ar" class="ar" hidden aria-label="Небо через камеру">
@@ -600,6 +639,175 @@ const CONSTELLATION_LINES = [
 ];
 
 if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES };
+
+// ===== Словарик: термины в два слоя — образ и «как это считается» =====
+// match — как термин встречается в текстах карточек (первое совпадение становится ссылкой).
+const GLOSSARY = {
+  azimuth: {
+    term: 'Азимут', match: /азимут\p{L}*/iu, see: ['altitude', 'compass'],
+    image: 'Направление по горизонту, как на циферблате компаса: 0° — север, 90° — восток, 180° — юг, 270° — запад.',
+    how: 'Угол по часовой стрелке от севера до точки горизонта прямо под объектом. Вместе с высотой это два числа, которыми можно показать на любую точку неба.',
+  },
+  altitude: {
+    term: 'Высота над горизонтом', match: /над горизонтом/iu, see: ['azimuth', 'zenith', 'refraction'],
+    image: 'На сколько поднять взгляд от горизонта: 0° — у самой земли, 90° — прямо над головой. Кулак на вытянутой руке закрывает около 10°.',
+    how: 'Звёзды «прибиты» к небесной сфере своими координатами, как города к глобусу. Приложение берёт твоё место и время, узнаёт, какой кусок сферы сейчас над тобой (звёздное время), и поворачивает сферу — получаются азимут и высота.',
+  },
+  zenith: {
+    term: 'Зенит', match: /зенит\p{L}*/iu, see: ['altitude'],
+    image: 'Точка прямо над головой. На куполе — центр круга, край круга — горизонт.',
+    how: 'Купол нарисован как небо, если лечь на спину головой на север: поэтому восток слева, а запад справа — не перепутано, а «вид снизу».',
+  },
+  ecliptic: {
+    term: 'Эклиптика', match: /эклиптик\p{L}*/iu, see: ['planets', 'opposition'],
+    image: 'Дорога Солнца по небу за год. Луна и планеты всегда рядом с ней: Солнечная система плоская, как блин.',
+    how: 'Это плоскость земной орбиты, спроецированная на небо. Она наклонена к небесному экватору на 23,4° — тот же наклон земной оси, который даёт времена года.',
+  },
+  planets: {
+    term: 'Планеты', match: /планет\p{L}*/iu, see: ['ecliptic', 'elongation', 'opposition'],
+    image: 'Звёзды мерцают, а планеты светят ровно: они ближе и видны крошечным диском, а не точкой, — воздух не успевает «дёргать» диск целиком.',
+    how: 'Положения считаются по орбитам Кеплера с поправками (алгоритм Шлайтера): точность — угловые минуты, глазу не отличить.',
+  },
+  magnitude: {
+    term: 'Звёздная величина', match: /звёздн\p{L}* величин\p{L}*|яркость/iu, see: ['lightTime'],
+    image: 'Шкала яркости наоборот: чем меньше число, тем ярче. Венера −4, Сириус −1,5, Полярная 2. В городе глазом видно примерно до 4.',
+    how: 'Разница в 5 величин — это яркость в 100 раз, одна величина — в 2,5 раза. Шкала досталась от Гиппарха, который 2000 лет назад делил звёзды на шесть «классов».',
+  },
+  lightTime: {
+    term: 'Свет идёт', match: /свет (?:идёт|шёл)/iu, see: ['magnitude'],
+    image: 'Ты видишь прошлое: Луну — какой она была 1,3 секунды назад, Солнце — 8 минут назад, звёзды — годы и века назад.',
+    how: 'Свет летит 300 000 км в секунду. Расстояние делим на скорость света — получаем, сколько он был в пути.',
+  },
+  phase: {
+    term: 'Фаза Луны', match: /фаз\p{L}*/iu, see: ['elongation'],
+    image: 'Луна всегда наполовину освещена Солнцем. Фаза — это то, какую часть освещённой половины мы видим сбоку. Освещённый край всегда смотрит на Солнце.',
+    how: 'Считается по углу Солнце — Луна — Земля. Растущая Луна видна вечером на западе, убывающая — утром на востоке.',
+  },
+  elongation: {
+    term: 'Угол от Солнца (элонгация)', match: /от солнца на небе|элонгаци\p{L}*|в лучах солнца/iu, see: ['planets', 'opposition'],
+    image: 'Насколько далеко планета от Солнца на небе. Ближе ~15° — тонет в его сиянии, как светлячок рядом с фонарём.',
+    how: 'Меркурий никогда не отходит от Солнца дальше 28°, Венера — 47°: их орбиты внутри земной. Внешние планеты могут оказаться и напротив Солнца.',
+  },
+  opposition: {
+    term: 'Противостояние', match: /противостояни\p{L}*/iu, see: ['elongation'],
+    image: 'Планета напротив Солнца: восходит на закате, видна всю ночь и ярче всего — Земля как раз проезжает рядом с ней.',
+    how: 'Земля обгоняет внешние планеты по орбите: Марс — раз в 2 года 2 месяца, Юпитер и Сатурн — примерно раз в год.',
+  },
+  refraction: {
+    term: 'Рефракция', match: /рефракци\p{L}*/iu, see: ['altitude', 'twilight'],
+    image: 'Воздух работает как линза и приподнимает светила у горизонта. На закате Солнце уже ушло за горизонт, а мы его ещё видим.',
+    how: 'У самого горизонта подъём около 0,6° — больше диаметра Солнца; на высоте 45° — уже меньше сотой градуса.',
+  },
+  twilight: {
+    term: 'Сумерки', match: /сумерк\p{L}*/iu, see: ['mirror', 'refraction'],
+    image: 'После заката небо темнеет ступенями: гражданские сумерки (Солнце до −6°) — светло, видна Венера; навигационные (до −12°) — видны звёзды и ещё горизонт; астрономические (до −18°); дальше — ночь.',
+    how: 'Ступени отмеряют, насколько глубоко Солнце под горизонтом. Для спутников лучше всего гражданские и навигационные: у тебя уже темно, а на высоте сотен километров ещё солнце.',
+  },
+  parallax: {
+    term: 'Параллакс', match: /параллакс\p{L}*|поправляет её положение/iu, see: ['altitude'],
+    image: 'Палец перед глазами «прыгает», если закрывать то один, то другой глаз. Луна так близко, что из разных городов видна в чуть разных местах среди звёзд — до 1°.',
+    how: 'Приложение пересчитывает Луну из центра Земли к твоей точке на поверхности: смещение — до двух её диаметров.',
+  },
+  precession: {
+    term: 'Прецессия', match: /прецесси\p{L}*/iu, see: ['polaris'],
+    image: 'Земная ось медленно описывает конус, как ось волчка, — один круг за 26 000 лет. Через 12 000 лет «Полярной» станет Вега.',
+    how: 'Координаты звёзд в каталоге даны на 2000 год; приложение доворачивает их на сегодняшнюю дату.',
+  },
+  polaris: {
+    term: 'Полярная звезда', match: /полярн\p{L}* звезд\p{L}*/iu, see: ['precession', 'altitude'],
+    image: 'Почти над северным полюсом мира, поэтому всё небо вращается вокруг неё. Её высота над горизонтом равна твоей широте.',
+    how: 'Земная ось смотрит почти точно на неё (отклонение меньше 1°). По ней веками находили север и широту без всяких приборов.',
+  },
+  constellation: {
+    term: 'Созвездие', match: /созвезди\p{L}*/iu, see: ['lightTime'],
+    image: 'Участок неба с узнаваемой фигурой. Звёзды фигуры обычно вовсе не рядом друг с другом — просто на одной линии взгляда, как фонари на разных улицах.',
+    how: 'Сейчас небо поделено на 88 созвездий с точными границами; линии фигур — это традиция, а не физика.',
+  },
+  orbit: {
+    term: 'Орбита', match: /орбит\p{L}*/iu, see: ['tle', 'shadow'],
+    image: 'Пушка Ньютона: если выстрелить с горы достаточно быстро (8 км/с), ядро падает, но Земля «уходит» из-под него, и оно падает вечно.',
+    how: 'На высоте 400 км виток занимает полтора часа, на 36 000 км — ровно сутки (поэтому спутники ТВ «висят» на месте).',
+  },
+  tle: {
+    term: 'TLE — паспорт орбиты', match: /\bTLE\b|данные орбиты/iu, see: ['orbit'],
+    image: 'Две строки цифр: наклон орбиты, её вытянутость и где спутник был в определённый момент. Радары обновляют их каждый день, сайт CelesTrak раздаёт бесплатно.',
+    how: 'Модель SGP4 по этим строкам считает положение в любую секунду с учётом сплюснутости Земли и торможения в атмосфере. Ошибка растёт на 1–3 км в сутки, поэтому орбиты обновляются каждые 6 часов.',
+  },
+  mirror: {
+    term: 'Почему спутник видно', match: /виден глазом|зеркальц\p{L}*|на солнце(?=,)/u, see: ['shadow', 'twilight', 'pass'],
+    image: 'Спутник сам не светится — это зеркальце на солнце. Видно его, только когда на нём солнце, а у тебя уже темно: час-два после заката и перед рассветом.',
+    how: 'Приложение проверяет два условия: Солнце у тебя ниже −6°, а спутник не попал в тень Земли. Яркость оценивается по расстоянию и углу освещения, как у шарика под лампой.',
+  },
+  shadow: {
+    term: 'Тень Земли', match: /тен\p{L}* Земли/iu, see: ['mirror', 'pass'],
+    image: 'Земля отбрасывает в космос длинную тень. Спутник, влетая в неё, гаснет на глазах — будто выключили лампочку. Ближе к полуночи в тени почти все.',
+    how: 'Тень считается цилиндром позади Земли радиусом 6378 км: если спутник за Землёй и ближе к оси цилиндра, чем радиус, — он в тени.',
+  },
+  pass: {
+    term: 'Пролёт', match: /пролёт\p{L}*/iu, see: ['mirror', 'shadow'],
+    image: 'Отрезок, когда спутник выше 10° над горизонтом, освещён Солнцем, а у тебя темно. МКС пересекает небо за 4–6 минут — ровная точка без мигания.',
+    how: 'Приложение раз в минуту проверяет, не поднялся ли спутник над горизонтом, а там, где поднялся, считает шагом 10 секунд.',
+  },
+  starlinkTrain: {
+    term: 'Поезд Starlink', match: /поезд\p{L}*|цепочк\p{L}*/iu, see: ['orbit', 'mirror'],
+    image: 'Сразу после запуска десятки спутников Starlink летят цепочкой, как нитка бус. Через пару недель они поднимаются на рабочую высоту и расходятся.',
+    how: 'Ракета выпускает их пачкой (20–60 штук) в одной точке. Каждый потом сам поднимается своим двигателем, и пока они не разошлись, видна «нитка».',
+  },
+  adsb: {
+    term: 'ADS-B', match: /ADS-B/u, see: ['lead', 'mlat', 'gps'],
+    image: 'Самолёт сам каждые полсекунды сообщает в эфир, кто он, где и на какой высоте. Любители ставят приёмники за 20 долларов и складывают всё в общую карту.',
+    how: 'Сигнал идёт на частоте 1090 МГц и слышен за 300–400 км. Координаты самолёт берёт из своего GPS — поэтому помехи GPS видны и на картах.',
+  },
+  lead: {
+    term: 'Упреждение', match: /упреждени\p{L}*/iu, see: ['adsb'],
+    image: 'Как зенитчик целится не в самолёт, а туда, где он будет: между обновлениями приложение само продвигает самолёт по его скорости и курсу.',
+    how: 'Данные приходят раз в 5 секунд; за это время самолёт пролетает около километра. Положение двигается по дуге большого круга, высота — по скорости набора.',
+  },
+  mlat: {
+    term: 'MLAT', match: /MLAT/u, see: ['adsb'],
+    image: 'Если самолёт не сообщает координаты, их вычисляют по тому, когда его сигнал дошёл до нескольких приёмников — как по раскатам грома понять, где ударила молния.',
+    how: 'Разница во времени прихода в миллионные доли секунды даёт разницу расстояний; три-четыре приёмника — и точка найдена.',
+  },
+  gps: {
+    term: 'Помехи GPS', match: /помех\p{L}* GPS|GPS/u, see: ['adsb', 'mlat'],
+    image: 'Над Израилем GPS часто глушат или подменяют. Самолёт летит ровно, а его приёмник «думает», что он в другом месте, — и на карте самолёт прыгает.',
+    how: 'Самолёт сам сообщает, насколько уверен в координатах (поля NIC и NACp). Если уверенность нулевая, приложение рисует его пунктиром.',
+  },
+  callsign: {
+    term: 'Позывной', match: /позывн\p{L}*|рейс\p{L}*/iu, see: ['adsb'],
+    image: 'Имя рейса в эфире: три буквы авиакомпании и номер. ELY — Эль Аль, ISR — Израэйр, RYR — Ryanair, WZZ — Wizz Air.',
+    how: 'Буквенный код авиакомпании выдаёт ИКАО; номер рейса — сама авиакомпания.',
+  },
+  compass: {
+    term: 'Компас и подгонка', match: /компас\p{L}*/iu, see: ['azimuth', 'fov'],
+    image: 'Магнитный датчик в телефоне путается от железа рядом: перила, машины, арматура в стенах. Подгонка по Луне или планете убирает ошибку — мы точно знаем, где светило.',
+    how: 'Ориентация телефона хранится матрицей поворота (а не тремя углами — у них «шарнирный замок», когда телефон стоит вертикально). Подгонка добавляет к азимуту поправку.',
+  },
+  fov: {
+    term: 'Поле зрения', match: /поле зрения/iu, see: ['compass'],
+    image: 'Какой кусок неба помещается в экран камеры. Обычно 60–70° по длинной стороне; если метки «разъезжаются» относительно звёзд — подвинь ползунок.',
+    how: 'Камера — это объектив: точка на угле θ от оси попадает на экран на расстоянии f·tg θ от центра, где f зависит от поля зрения.',
+  },
+};
+
+// Текст → HTML, где первое упоминание каждого термина — кнопка в словарик
+function linkTerms(text) {
+  const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const hits = [];
+  for (const [key, g] of Object.entries(GLOSSARY)) {
+    const re = new RegExp(`(?<![\\p{L}])(?:${g.match.source})`, g.match.flags.includes('u') ? g.match.flags : g.match.flags + 'u');
+    const m = re.exec(text);
+    if (m) hits.push({ start: m.index, end: m.index + m[0].length, key });
+  }
+  hits.sort((a, b) => a.start - b.start);
+  let out = '', pos = 0;
+  for (const h of hits) {
+    if (h.start < pos) continue;                      // термины не вкладываются друг в друга
+    out += esc(text.slice(pos, h.start)) + `<button class="term" data-term="${h.key}">${esc(text.slice(h.start, h.end))}</button>`;
+    pos = h.end;
+  }
+  return out + esc(text.slice(pos));
+}
 
 /*!
  * satellite-js v5.0.0
@@ -1384,8 +1592,10 @@ async function fetchPlanes(proxy, lat, lon) {
     card.querySelector('.card-kind').textContent = kind;
     card.querySelector('.card-name').textContent = o.name || o.n;
     card.querySelector('.card-where').textContent = where;
-    card.querySelector('.card-facts').innerHTML = facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
-    card.querySelector('.card-text').textContent = text;
+    // термины — ссылки в словарик; перерисовываем только если текст изменился, чтобы не сбивать нажатие
+    const setHtml = (el, html) => { if (el._html !== html) { el._html = html; el.innerHTML = html; } };
+    setHtml(card.querySelector('.card-facts'), facts.map(([k, v]) => `<div><dt>${linkTerms(k)}</dt><dd>${v}</dd></div>`).join(''));
+    setHtml(card.querySelector('.card-text'), linkTerms(text));
     card.hidden = false;
   }
   function select(key) {
@@ -1986,6 +2196,147 @@ async function fetchPlanes(proxy, lat, lon) {
 
   // для проверок: window.SkyAR.state
   window.SkyAR = { state: ar, toScreen, centerLook };
+})();
+
+// ===== Обучающий режим: словарик и подсказки в момент события =====
+// Учим не «вообще», а когда это происходит: МКС гаснет — «вошла в тень Земли»,
+// над головой цепочка Starlink — «это поезд», самолёт прыгает — «помехи GPS».
+(function () {
+  const app = window.SkyApp;
+  if (!app) return;
+  const $ = s => document.querySelector(s);
+  const S = app.state;
+  const tipsOn = () => app.store.get('tips') !== false;
+
+  // ---------- карточка термина ----------
+  function openTerm(key) {
+    const g = GLOSSARY[key]; if (!g) return;
+    $('#glossTerm').textContent = g.term;
+    $('#glossImage').textContent = g.image;
+    $('#glossHow').textContent = g.how;
+    $('#glossMore').open = false;
+    $('#glossSee').innerHTML = (g.see || []).filter(k => GLOSSARY[k])
+      .map(k => `<button class="chip" data-term="${k}">${GLOSSARY[k].term}</button>`).join('');
+    $('#gloss').hidden = false;
+  }
+  $('#glossClose').addEventListener('click', () => { $('#gloss').hidden = true; });
+  $('#gloss').addEventListener('click', e => { if (e.target.id === 'gloss') $('#gloss').hidden = true; });
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-term]'); if (!b) return;
+    e.stopPropagation(); openTerm(b.dataset.term);
+  }, true);
+
+  // словарик целиком — в панели
+  $('#glossList').innerHTML = Object.entries(GLOSSARY)
+    .sort((a, b) => a[1].term.localeCompare(b[1].term, 'ru'))
+    .map(([k, g]) => `<button class="chip" data-term="${k}">${g.term}</button>`).join('');
+  // термины в постоянных подсказках страницы тоже кликабельны
+  document.querySelectorAll('.legend li > span:last-child, .note[data-static], .hint').forEach(el => { el.innerHTML = linkTerms(el.textContent); });
+
+  const tg = $('#tgTips');
+  tg.checked = tipsOn();
+  tg.addEventListener('change', () => { app.store.set('tips', tg.checked); if (!tg.checked) $('#tips').innerHTML = ''; });
+
+  // ---------- всплывающие подсказки ----------
+  function tip(text, term, key) {
+    const box = $('#tips');
+    while (box.children.length >= 2) box.firstElementChild.remove();
+    const el = document.createElement('div');
+    el.className = 'tip';
+    el.innerHTML = `<div class="tip-text">${text}</div><div class="tip-act">`
+      + (key ? `<button data-show="${key}">Показать</button>` : '')
+      + (term ? `<button data-term="${term}">Почему так?</button>` : '')
+      + `<button class="tip-x" aria-label="Закрыть">×</button></div>`;
+    box.appendChild(el);
+    setTimeout(() => el.remove(), 15000);
+  }
+  $('#tips').addEventListener('click', e => {
+    const tipEl = e.target.closest('.tip');
+    if (e.target.closest('.tip-x')) { tipEl.remove(); return; }
+    const show = e.target.closest('[data-show]');
+    if (show) { app.select(show.dataset.show); if ($('#ar').hidden) $('#domeBox').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  });
+
+  // ---------- кто что заметил ----------
+  const said = new Map();                              // ключ события → когда говорили (чтобы не повторяться)
+  const once = (key, coolMin) => {
+    const t = said.get(key);
+    if (t && Date.now() - t < coolMin * 60000) return false;
+    said.set(key, Date.now()); return true;
+  };
+  const prev = { sats: new Map(), sunAlt: null };
+  const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const name = s => esc(s.sat.name);
+  const angle = (a, b) => {
+    const D = Math.PI / 180, v = o => [Math.cos(o.alt * D) * Math.sin(o.az * D), Math.cos(o.alt * D) * Math.cos(o.az * D), Math.sin(o.alt * D)];
+    const p = v(a), q = v(b);
+    return Math.acos(Math.max(-1, Math.min(1, p[0] * q[0] + p[1] * q[1] + p[2] * q[2]))) / D;
+  };
+
+  function watch() {
+    if (!tipsOn() || S.offsetMin !== 0 || S.playing || !S.snap) { prev.sats.clear(); prev.sunAlt = null; return; }
+
+    // сумерки: Солнце переходит ступени −6°, −12°, −18° вниз
+    const sunAlt = S.snap.sun.alt;
+    if (prev.sunAlt != null) {
+      const steps = [[-0.8, 'Солнце село. Через полчаса-час — лучшее время для спутников: у тебя темнеет, а над головой ещё солнце.'],
+        [-6, 'Начались навигационные сумерки: на небе проступают яркие звёзды, а МКС и спутники видны лучше всего.'],
+        [-12, 'Астрономические сумерки: горизонт почти растворился, видны созвездия.'],
+        [-18, 'Настоящая ночь: Солнце ушло на 18° под горизонт, небо темнее уже не станет.']];
+      for (const [lvl, text] of steps) {
+        if (prev.sunAlt > lvl && sunAlt <= lvl && once('sun' + lvl, 600)) tip(text, 'twilight');
+      }
+    }
+    prev.sunAlt = sunAlt;
+
+    // главные спутники: появился, погас в тени, вынырнул из тени
+    const seen = new Map();
+    for (const v of S.satView) {
+      if (!v.sat.featured) continue;
+      seen.set(v.sat.id, v);
+      const was = prev.sats.get(v.sat.id), key = 'sat:' + v.sat.id;
+      if (v.visible && v.alt >= 10 && (!was || !was.visible || was.alt < 10) && once('rise' + v.sat.id, 20)) {
+        const ps = S.passes.find(p => p.sat.id === v.sat.id && p.end.ms > Date.now());
+        tip(`${name(v)} над тобой: ${Math.round(v.alt)}° над горизонтом, ${rumbWord(v.az)}`
+          + (ps ? `. Поднимется до ${Math.round(ps.max.alt)}°.` : '.'), 'mirror', key);
+      }
+      if (was && was.sunlit && !v.sunlit && v.alt > 5 && once('shadow' + v.sat.id, 20)) {
+        tip(`${name(v)}: вход в тень Земли на ${rumbWord(v.az)}е — точка гаснет за пару секунд, будто выключили лампочку.`, 'shadow', key);
+      }
+      if (was && !was.sunlit && v.sunlit && v.alt > 5 && S.snap.sun.alt < -6 && once('emerge' + v.sat.id, 20)) {
+        tip(`${name(v)}: выход из тени Земли на ${rumbWord(v.az)}е — точка вспыхивает на ровном месте.`, 'shadow', key);
+      }
+    }
+    prev.sats = seen;
+
+    // поезд Starlink: пять и больше видимых Starlink кучкой
+    const sl = S.satView.filter(v => v.sat.kind === 'starlink' && v.visible);
+    if (sl.length >= 5 && once('trainCheck', 1)) {
+      let best = null, bn = 0;
+      for (const a of sl) {
+        const n = sl.filter(b => angle(a, b) < 8).length;
+        if (n > bn) { bn = n; best = a; }
+      }
+      if (bn >= 5 && once('train', 30)) {
+        tip(`Похоже на «поезд» Starlink: ${bn} спутников цепочкой на ${rumbWord(best.az)}е, ${Math.round(best.alt)}° над горизонтом.`, 'starlinkTrain', 'sat:' + best.sat.id);
+      }
+    }
+
+    // самолёты: прямо над головой; позиция «прыгает» из-за помех GPS
+    for (const v of S.planes.view) {
+      const p = v.plane, call = esc(p.call || p.reg || p.id);
+      if (v.alt > 60 && once('over' + p.id, 30)) {
+        tip(`Прямо над головой: ${call}${p.airline ? ' (' + esc(p.airline) + ')' : ''}, высота ${app.fmt(v.h / 1000, 1)} км.`, 'adsb', 'pl:' + p.id);
+      }
+      if (p.dubious && once('gps', 45)) {
+        tip(`У ${call} сомнительная позиция — похоже на помехи GPS. На купол он нарисован пунктиром.`, 'gps', 'pl:' + p.id);
+      }
+    }
+  }
+  setInterval(watch, 2000);
+
+  // для проверок
+  window.SkyLearn = { openTerm, tip, watch };
 })();
 
 </script>

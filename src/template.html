@@ -129,6 +129,27 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
   background: color-mix(in srgb, var(--scope) 14%, transparent); }
 .ar-layers { margin: 0; background: rgba(6,10,21,.72); padding: 8px; border-radius: 12px; }
 .ar-layers[hidden] { display: none; }
+.term { font: inherit; color: inherit; background: none; border: 0; padding: 0; border-radius: 0; cursor: help;
+  text-decoration: underline dotted color-mix(in srgb, var(--scope) 70%, transparent); text-underline-offset: 3px; }
+.term:hover { color: var(--scope); }
+.sheet { position: fixed; inset: 0; z-index: 70; background: rgba(2,4,10,.55); display: flex; align-items: flex-end; justify-content: center; padding: 12px; }
+.sheet[hidden] { display: none; }
+.sheet-card { width: 100%; max-width: 520px; max-height: 80vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 16px; padding: 16px 18px 18px; box-shadow: 0 12px 40px rgba(0,0,0,.5); margin-bottom: env(safe-area-inset-bottom); }
+.sheet-card h3 { font-family: var(--font-display); font-size: 22px; margin: 0; }
+.sheet-card p { margin: 10px 0 0; color: #dbe3f2; }
+.sheet-card details { margin-top: 12px; border-top: 1px solid var(--rule); padding-top: 10px; }
+.sheet-card summary { cursor: pointer; color: var(--scope); }
+.sheet-card .layers { margin-top: 12px; }
+#tips { position: fixed; z-index: 65; left: 12px; right: 12px; top: max(64px, calc(env(safe-area-inset-top) + 64px));
+  display: grid; gap: 8px; justify-items: center; pointer-events: none; }
+.tip { pointer-events: auto; width: 100%; max-width: 480px; background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sat) 45%, var(--rule)); border-radius: 12px; padding: 10px 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 14px; animation: tipIn .3s ease-out; }
+.tip-act { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+.tip-act button { font-size: 13px; padding: 4px 10px; }
+@keyframes tipIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tip { animation: none; } }
 .toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 13.5px; }
 .toggles label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
 .toggles input { accent-color: var(--sat); width: 16px; height: 16px; margin: 0; }
@@ -197,7 +218,7 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
       <section class="block">
         <h2>Что увидеть этой ночью</h2>
         <ul class="rows" id="tonight"></ul>
-        <p class="note">Число рядом с названием — звёздная величина: чем меньше, тем ярче. Видно глазом примерно до 4 в городе и до 6 за городом.</p>
+        <p class="note" data-static>Число рядом с названием — звёздная величина: чем меньше, тем ярче. Видно глазом примерно до 4 в городе и до 6 за городом.</p>
       </section>
 
       <section class="block">
@@ -231,7 +252,14 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
           <li><span class="sw sw-plane"></span><span>Самолёты: острие показывает, куда летит. Пунктирный контур — позиция сомнительная (помехи GPS).</span></li>
           <li><span class="sw sw-line"></span><span>Фигуры созвездий: Большая Медведица, Орион, Кассиопея, Лебедь, Лев, Пегас и другие.</span></li>
         </ul>
-        <p class="note">Перемотай время ползунком или нажми «Ускорить»: увидишь, как всё небо вращается вокруг Полярной звезды.</p>
+        <p class="note" data-static>Перемотай время ползунком или нажми «Ускорить»: увидишь, как всё небо вращается вокруг Полярной звезды.</p>
+      </section>
+
+      <section class="block">
+        <h2>Словарик</h2>
+        <div class="layers" id="glossList"></div>
+        <div class="toggles"><label><input type="checkbox" id="tgTips"> Подсказывать, когда что-то происходит</label></div>
+        <p class="note">Подчёркнутые пунктиром слова в карточках тоже открывают словарик.</p>
       </section>
 
       <section class="block">
@@ -250,6 +278,17 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
       </section>
     </aside>
   </main>
+</div>
+
+<div id="tips" aria-live="polite"></div>
+<div id="gloss" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="glossTerm">
+  <div class="sheet-card">
+    <div class="card-head"><div><div class="card-kind">Словарик</div><h3 id="glossTerm"></h3></div>
+      <button id="glossClose" aria-label="Закрыть">×</button></div>
+    <p id="glossImage"></p>
+    <details id="glossMore"><summary>Как это считается</summary><p id="glossHow"></p></details>
+    <div class="layers" id="glossSee"></div>
+  </div>
 </div>
 
 <div id="ar" class="ar" hidden aria-label="Небо через камеру">
@@ -274,11 +313,13 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 <script>
 /*@@ASTRO@@*/
 /*@@STARS@@*/
+/*@@GLOSSARY@@*/
 /*@@SATLIB@@*/
 /*@@SATS@@*/
 /*@@PLANES@@*/
 /*@@APP@@*/
 /*@@AR@@*/
+/*@@LEARN@@*/
 </script>
 </body>
 </html>
