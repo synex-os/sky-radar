@@ -1,6 +1,9 @@
-# Разведка источников орбит: запускается вручную, ничего не выкладывает
+# Разведка источников орбит: запускается при правке этого файла, ничего не выкладывает
 name: Разведка источников орбит
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    paths: [.github/workflows/probe.yml]
 permissions:
   contents: read
 jobs:
