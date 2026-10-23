@@ -80,6 +80,15 @@ jobs:
             else rm -f "$f"; echo "::warning::starlink: орбит нет"; fi
           fi
 
+      - name: Проверить посредника самолётов
+        continue-on-error: true
+        run: |
+          r=$(curl -sS -m 30 -D /tmp/h -o /tmp/b -w '%{http_code}' -H "Origin: https://${{ github.repository_owner }}.github.io" \
+            "https://sky-radar-planes.isratars.workers.dev/?lat=32.33&lon=34.86&dist=60" 2>&1 || true)
+          cors=$(tr -d '\r' < /tmp/h | grep -i '^access-control-allow-origin' | cut -d' ' -f2)
+          info=$(python3 -c "import json; d=json.load(open('/tmp/b')); print('источник', d.get('src'), 'самолётов', len(d.get('ac', [])), d.get('error', ''), d.get('details', ''))" 2>&1 | tail -1)
+          echo "::notice::посредник самолётов → $r, CORS=${cors:-нет}, $info"
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

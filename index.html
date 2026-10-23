@@ -786,7 +786,7 @@ function satPasses(s, fromMs, hours, lat, lon, stepSec = 10) {
 // Мы берём карту вокруг наблюдателя через посредника (Cloudflare Worker, см. worker/planes.js)
 // и «упреждаем»: между запросами двигаем самолёт по его скорости и курсу.
 
-const PLANES_PROXY = '';                  // адрес посредника; пока пусто — берём введённый на странице
+const PLANES_PROXY = 'https://sky-radar-planes.isratars.workers.dev';   // посредник на Cloudflare (worker/planes.js)
 const PLANES_RADIUS_NM = 60;              // ~110 км: дальше самолёт на крейсерской высоте ниже 5° над горизонтом
 const PLANE_MAX_AGE = 60;                 // с: позицию старше минуты не показываем
 const FT = 0.3048, KT = 0.514444;         // футы → метры, узлы → м/с

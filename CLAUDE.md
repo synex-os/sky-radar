@@ -58,7 +58,8 @@
   → посредник обязателен.
 - `worker/planes.js` — Cloudflare Worker: `?lat&lon&dist` (морские мили, ≤100) → adsb.fi, запасной adsb.lol;
   ужимает поля, кэш 4 с по месту, округлённому до 0,1°; CORS только для `ALLOWED_ORIGINS`.
-  Ставится вручную через дашборд Cloudflare (`worker/README.md`). Адрес — константа `PLANES_PROXY`
+  Ставится вручную через дашборд Cloudflare (`worker/README.md`), стоит на https://sky-radar-planes.isratars.workers.dev
+  (при каждой выкладке задание проверяет его и пишет итог в аннотацию). Адрес — константа `PLANES_PROXY`
   в `src/planes.js` или поле на странице (localStorage `skyradar.planesProxy`).
 - `src/planes.js` — WGS84 → ECEF → ENU (азимут/высота/дальность), упреждение по `gs`/`track`/`geom_rate`
   (большой круг), высота `alt_geom` (иначе `alt_baro`), «на земле» скрыт, старше 60 с — скрыт.
