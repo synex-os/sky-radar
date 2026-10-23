@@ -88,6 +88,7 @@ jobs:
           cors=$(tr -d '\r' < /tmp/h | grep -i '^access-control-allow-origin' | cut -d' ' -f2)
           info=$(python3 -c "import json; d=json.load(open('/tmp/b')); print('источник', d.get('src'), 'самолётов', len(d.get('ac', [])), 'пропущены', d.get('skipped', '?'), d.get('error', ''), d.get('details', ''))" 2>&1 | tail -1)
           echo "::notice::посредник самолётов → $r, CORS=${cors:-нет}, $info"
+          echo "::notice::разведка посредника: $(curl -sS -m 60 'https://sky-radar-planes.isratars.workers.dev/?probe=1' 2>&1 | head -c 600)"
 
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -297,7 +297,8 @@
     }
   }
 
-  const SOURCE_LINKS = { 'adsb.fi': 'https://adsb.fi', 'adsb.lol': 'https://adsb.lol' };
+  const SOURCE_LINKS = { 'adsb.fi': 'https://adsb.fi', 'airplanes.live': 'https://airplanes.live', 'adsb.one': 'https://adsb.one',
+    'adsb.lol': 'https://adsb.lol', opensky: 'https://opensky-network.org' };
   function planesPanel() {
     const P = state.planes, st = $('#planesStatus'), form = $('#proxyForm');
     form.hidden = !!P.proxy && !P.error;

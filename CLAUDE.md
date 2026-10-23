@@ -56,8 +56,11 @@
 - Разведка с GitHub 23.10.2026: adsb.fi и adsb.lol отдают данные, но **без CORS**; adsb.lol ещё и лимит
   500 запросов/сутки на IP; airplanes.live отвечает 403 серверам; OpenSky CORS только для своего сайта.
   → посредник обязателен.
-- `worker/planes.js` — Cloudflare Worker: `?lat&lon&dist` (морские мили, ≤100) → adsb.fi, запасной adsb.lol;
-  ужимает поля, кэш 4 с по месту, округлённому до 0,1°; CORS только для `ALLOWED_ORIGINS`.
+- `worker/planes.js` — Cloudflare Worker: `?lat&lon&dist` (морские мили, ≤100) → по очереди adsb.fi, airplanes.live,
+  adsb.one, adsb.lol, OpenSky (переводится в общий вид); отказавший с 403/429 источник — пауза 2 мин;
+  ужимает поля, кэш 6 с по месту, округлённому до 0,1°; CORS только для `ALLOWED_ORIGINS`; `?probe=1` — разведка.
+- С Cloudflare 23.10.2026: adsb.fi → 403 (не пускает воркеры), adsb.lol → 429 (общий лимит IP Cloudflare
+  исчерпан чужими). Блокировки не обходить (не подделывать UA и т.п.).
   Ставится вручную через дашборд Cloudflare (`worker/README.md`), стоит на https://sky-radar-planes.isratars.workers.dev
   (при каждой выкладке задание проверяет его и пишет итог в аннотацию). Адрес — константа `PLANES_PROXY`
   в `src/planes.js` или поле на странице (localStorage `skyradar.planesProxy`).
