@@ -19,21 +19,14 @@ jobs:
             local tle; tle=$(grep -c '^1 ' /tmp/b 2>/dev/null || echo 0)
             echo "::notice::$name → $out, CORS=${cors:-нет}, TLE-строк=$tle, начало: $(head -c 160 /tmp/b 2>/dev/null | tr '\n\r' '  ')"
           }
-          probe ivan-starlink "https://tle.ivanstanojevic.me/api/tle?search=STARLINK&page-size=100"
-          probe ivan-all "https://tle.ivanstanojevic.me/api/tle?page-size=100"
-          probe satnogs "https://db.satnogs.org/api/tle/?format=json"
-          probe celestrak-com "https://celestrak.com/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle"
-          probe celestrak-txt "https://celestrak.org/NORAD/elements/visual.txt"
-          probe amsat "https://www.amsat.org/tle/current/nasabare.txt"
-          probe ivan-25544 "https://tle.ivanstanojevic.me/api/tle/25544"
-          curl -sS -m 60 "https://db.satnogs.org/api/tle/?format=json" -o /tmp/sn.json || true
-          python3 - <<'PY' || true
-          import json
-          d = json.load(open('/tmp/sn.json'))
-          names = [x.get('tle0', '') for x in d]
-          star = sum('STARLINK' in n for n in names)
-          rb = sum('R/B' in n for n in names)
-          print(f"::notice::satnogs: всего {len(d)}, Starlink {star}, ступеней {rb}, ключи {list(d[0].keys())}")
-          PY
-          curl -sSL -m 40 "https://tle.ivanstanojevic.me/api/tle/?search=STARLINK&page-size=100" -o /tmp/iv.json || true
-          python3 -c "import json; d=json.load(open('/tmp/iv.json')); print('::notice::ivan starlink: totalItems', d.get('totalItems'), 'на странице', len(d.get('member', [])), 'view', d.get('view'))" || true
+          UA="Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
+          for u in "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=tle" "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle" "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=json"; do
+            r=$(curl -sS -m 40 -A "$UA" -o /tmp/b -w '%{http_code} %{size_download}B connect=%{time_connect}s total=%{time_total}s' "$u" 2>&1 || true)
+            echo "::notice::browserUA $u → $r, TLE=$(grep -c '^1 ' /tmp/b 2>/dev/null || echo 0), начало: $(head -c 120 /tmp/b 2>/dev/null | tr '\n\r' '  ')"
+            r=$(curl -sS -m 40 -o /tmp/b -w '%{http_code} %{size_download}B connect=%{time_connect}s total=%{time_total}s' "$u" 2>&1 || true)
+            echo "::notice::curlUA $u → $r"
+          done
+          for q in "STARLINK&page-size=100&page=2" "SL-16&page-size=100" "R%2FB&page-size=100"; do
+            r=$(curl -sSL -m 60 -o /tmp/iv.json -w '%{http_code} total=%{time_total}s' "https://tle.ivanstanojevic.me/api/tle/?search=$q" 2>&1 || true)
+            echo "::notice::ivan $q → $r, $(python3 -c "import json; d=json.load(open('/tmp/iv.json')); m=d.get('member',[]); print('total', d.get('totalItems'), 'пример', [x['name'] for x in m[:4]], 'даты', sorted(x['date'][:10] for x in m)[:1], sorted(x['date'][:10] for x in m)[-1:])" 2>&1 | tail -1)"
+          done
