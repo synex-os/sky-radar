@@ -123,6 +123,12 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .ar-row label { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: #dfe8f7; flex: 1 1 180px;
   background: rgba(6,10,21,.62); padding: 7px 10px; border-radius: 8px; }
 .ar-row input[type=range] { flex: 1; min-width: 0; accent-color: var(--scope); }
+.layers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { font-size: 13px; padding: 5px 10px; border-radius: 999px; color: var(--dim); }
+.chip[aria-pressed="true"] { color: var(--ink); border-color: color-mix(in srgb, var(--scope) 60%, var(--rule));
+  background: color-mix(in srgb, var(--scope) 14%, transparent); }
+.ar-layers { margin: 0; background: rgba(6,10,21,.72); padding: 8px; border-radius: 12px; }
+.ar-layers[hidden] { display: none; }
 .toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 13.5px; }
 .toggles label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
 .toggles input { accent-color: var(--sat); width: 16px; height: 16px; margin: 0; }
@@ -167,6 +173,7 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
           <p class="card-text"></p>
         </div>
       </div>
+      <div class="layers" id="layers" aria-label="Что показывать"></div>
       <button id="btnAR" class="ar-open">Навести телефон на небо</button>
       <p class="hint">Подними экран над головой, верх к северу: так и выглядит небо. Поэтому восток слева. Нажми на любую точку, чтобы узнать, что это.</p>
       <div class="timebar">
@@ -196,7 +203,6 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
       <section class="block">
         <h2>Самолёты рядом</h2>
         <ul class="rows" id="planesList"></ul>
-        <div class="toggles"><label><input type="checkbox" id="tgPlanes"> Показывать самолёты</label></div>
         <form id="proxyForm" hidden>
           <input id="proxyUrl" placeholder="https://…workers.dev" inputmode="url" autocomplete="off" aria-label="Адрес посредника">
           <button type="submit">Сохранить</button>
@@ -207,10 +213,6 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
       <section class="block">
         <h2>Пролёты МКС, Тяньгуна и Хаббла</h2>
         <ul class="rows" id="passes"><li class="note">Загружаю орбиты…</li></ul>
-        <div class="toggles">
-          <label><input type="checkbox" id="tgBright"> Яркие спутники</label>
-          <label><input type="checkbox" id="tgStarlink"> Starlink</label>
-        </div>
         <p class="note" id="satStatus"></p>
       </section>
 
@@ -259,9 +261,11 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
   </div>
   <div class="ar-bottom">
     <div id="arInfo" aria-live="polite"></div>
+    <div class="layers ar-layers" id="arLayers" hidden aria-label="Что показывать"></div>
     <div class="ar-row">
       <button id="arCalib" title="Наведи крестик на Луну, Солнце или яркую планету и нажми">Подогнать компас по светилу</button>
       <button id="arReset" title="Сбросить поправку компаса">Сброс</button>
+      <button id="arLayersBtn">Слои</button>
       <label>Поле зрения <input id="arFov" type="range" min="30" max="100" step="1"></label>
     </div>
   </div>

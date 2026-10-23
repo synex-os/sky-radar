@@ -88,16 +88,16 @@
 
   // ---------- что рисовать ----------
   function items() {
-    const s = app.state, snap = s.snap, out = [];
+    const s = app.state, snap = s.snap, L = s.layers, out = [];
     if (!snap) return out;
-    for (const t of snap.stars) {
+    for (const t of L.stars ? snap.stars : []) {
       if (t.alt < -1) continue;
       out.push({ key: 's:' + t.n, az: t.az, alt: t.alt, r: Math.max(1.3, 3.4 - 0.75 * t.m), color: '#eef3ff',
         label: t.m < 1.6 || t.n === 'Полярная' ? t.n : '', dim: true });
     }
-    for (const p of snap.planets) if (p.alt > -1) out.push({ key: 'p:' + p.id, az: p.az, alt: p.alt, r: Math.max(3, 4.5 - 0.6 * p.mag), color: '#f3d48b', label: p.name });
-    if (snap.sun.alt > -1) out.push({ key: 'sun', az: snap.sun.az, alt: snap.sun.alt, r: 12, color: '#ffc24a', label: 'Солнце' });
-    if (snap.moon.alt > -1) out.push({ key: 'moon', az: snap.moon.az, alt: snap.moon.alt, r: 11, color: '#ece8da', label: 'Луна' });
+    if (L.planets) for (const p of snap.planets) if (p.alt > -1) out.push({ key: 'p:' + p.id, az: p.az, alt: p.alt, r: Math.max(3, 4.5 - 0.6 * p.mag), color: '#f3d48b', label: p.name });
+    if (L.sun && snap.sun.alt > -1) out.push({ key: 'sun', az: snap.sun.az, alt: snap.sun.alt, r: 12, color: '#ffc24a', label: 'Солнце' });
+    if (L.moon && snap.moon.alt > -1) out.push({ key: 'moon', az: snap.moon.az, alt: snap.moon.alt, r: 11, color: '#ece8da', label: 'Луна' });
     for (const v of s.satView) {
       const small = v.sat.kind === 'starlink';
       out.push({ key: 'sat:' + v.sat.id, az: v.az, alt: v.alt, r: v.sat.featured ? 4.5 : small ? 1.4 : 2.2,
@@ -141,7 +141,7 @@
 
     // фигуры созвездий
     const snap = app.state.snap;
-    if (snap) {
+    if (snap && app.state.layers.lines) {
       const byName = {}; snap.stars.forEach(s => { byName[s.n] = s; });
       g.strokeStyle = 'rgba(124,196,255,0.35)'; g.lineWidth = 1;
       for (const [a, b] of CONSTELLATION_LINES) {
@@ -299,6 +299,7 @@
   $('#btnAR').addEventListener('click', open);
   $('#arClose').addEventListener('click', close);
   $('#arCalib').addEventListener('click', calibrate);
+  $('#arLayersBtn').addEventListener('click', () => { const el = $('#arLayers'); el.hidden = !el.hidden; });
   $('#arReset').addEventListener('click', () => { ar.yawFix = 0; app.store.set('arYaw', 0); say('Поправка компаса сброшена.'); });
   const fov = $('#arFov');
   fov.value = ar.fov;

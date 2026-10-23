@@ -17,6 +17,14 @@
     saturn: 'Кольца из льда и камней шириной в сотни тысяч километров, а толщиной местами всего десятки метров. Видны даже в небольшой телескоп.',
   };
 
+  // Слои: что показывать на куполе и в камере. Выбор запоминается.
+  const LAYERS = [
+    ['stars', 'Звёзды', true], ['lines', 'Созвездия', true], ['ecliptic', 'Эклиптика', true],
+    ['planets', 'Планеты', true], ['moon', 'Луна', true], ['sun', 'Солнце', true],
+    ['featured', 'МКС, Тяньгун, Хаббл', true], ['bright', 'Яркие спутники', true],
+    ['starlink', 'Starlink', false], ['planes', 'Самолёты', true],
+  ];
+
   const $ = s => document.querySelector(s);
   const canvas = $('#dome'), ctx = canvas.getContext('2d');
   const box = $('#domeBox');
@@ -38,9 +46,16 @@
     passes: [],
     tle: null,          // когда и откуда пришли орбиты
     planes: { list: [], view: [], src: '', receivedMs: 0, error: '', busy: false,
-      on: store.get('planes') !== false, proxy: PLANES_PROXY || store.get('planesProxy') || '' },
-    satOpts: { bright: store.get('satBright') !== false, starlink: store.get('satStarlink') === true },
+      proxy: PLANES_PROXY || store.get('planesProxy') || '' },
+    layers: (() => {
+      const saved = store.get('layers') || {
+        // переезд со старых отдельных переключателей
+        bright: store.get('satBright') !== false, starlink: store.get('satStarlink') === true, planes: store.get('planes') !== false,
+      };
+      return Object.fromEntries(LAYERS.map(([k, , def]) => [k, saved[k] ?? def]));
+    })(),
   };
+  const L = state.layers;
 
   const fmt = (x, d = 0) => x.toLocaleString('ru-RU', { maximumFractionDigits: d, minimumFractionDigits: d });
   const hhmm = ms => new Date(ms).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -127,6 +142,7 @@
     ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
 
     // эклиптика
+    if (L.ecliptic) {
     ctx.setLineDash([4, 5]); ctx.strokeStyle = 'rgba(243,212,139,0.45)'; ctx.lineWidth = 1;
     const ecl = snap.ecliptic.concat([snap.ecliptic[0]]);
     ctx.beginPath(); let pen = false;
@@ -136,19 +152,20 @@
       if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
     }
     ctx.stroke(); ctx.setLineDash([]);
+    }
 
     // звёзды и фигуры созвездий
     const starAlpha = sunAlt > 0 ? 0.22 : sunAlt > -6 ? 0.45 : sunAlt > -12 ? 0.75 : 1;
     const byName = {}; snap.stars.forEach(s => { byName[s.n] = s; });
     ctx.strokeStyle = `rgba(124,196,255,${0.28 * starAlpha})`; ctx.lineWidth = 1;
-    for (const [a, b] of CONSTELLATION_LINES) {
+    for (const [a, b] of L.lines ? CONSTELLATION_LINES : []) {
       const s1 = byName[a], s2 = byName[b];
       if (!s1 || !s2 || s1.alt < 0 || s2.alt < 0) continue;
       const [x1, y1] = project(s1.alt, s1.az), [x2, y2] = project(s2.alt, s2.az);
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     }
     ctx.font = `${Math.max(9, size * 0.019)}px "Golos Text", sans-serif`; ctx.textAlign = 'left';
-    for (const s of snap.stars) {
+    for (const s of L.stars ? snap.stars : []) {
       if (s.alt < 0) continue;
       const [x, y] = project(s.alt, s.az);
       const r = Math.max(0.9, (3.4 - 0.78 * s.m) * size / 620);
@@ -166,7 +183,7 @@
 
     // планеты
     ctx.font = `600 ${Math.max(10, size * 0.021)}px "Golos Text", sans-serif`;
-    for (const pl of snap.planets) {
+    for (const pl of L.planets ? snap.planets : []) {
       if (pl.alt < 0) continue;
       const [x, y] = project(pl.alt, pl.az);
       const r = Math.max(2.4, (3.6 - 0.55 * pl.mag) * size / 620);
@@ -179,7 +196,7 @@
     drawPlanes(hits);
 
     // Солнце
-    if (snap.sun.alt > -1) {
+    if (L.sun && snap.sun.alt > -1) {
       const [x, y] = project(Math.max(snap.sun.alt, 0), snap.sun.az);
       const r = Math.max(7, size * 0.016);
       ctx.strokeStyle = '#ffc24a'; ctx.lineWidth = 1.6;
@@ -193,7 +210,7 @@
     }
 
     // Луна с фазой: освещённый край смотрит в сторону Солнца
-    if (snap.moon.alt > -1) {
+    if (L.moon && snap.moon.alt > -1) {
       const [x, y] = project(Math.max(snap.moon.alt, 0), snap.moon.az);
       const [sx, sy] = project(snap.sun.alt, snap.sun.az);
       drawMoon(x, y, Math.max(8, size * 0.019), snap.moon, Math.atan2(sy - y, sx - x));
@@ -223,9 +240,9 @@
   const SAT_LIT = '#8ef0c4', SAT_DARK = 'rgba(150,165,190,0.55)';
   function drawSats(sunAlt, hits) {
     const p = state.place, t = nowMs();
-    const pool = state.satOpts.bright ? state.sats : state.sats.filter(s => s.featured);
+    const pool = state.sats.filter(s => (s.featured ? L.featured : L.bright));
     // в ускоренном режиме тысячи Starlink не успевают пересчитываться — прячем их
-    const withStarlink = state.satOpts.starlink && !state.playing ? pool.concat(state.starlink) : pool;
+    const withStarlink = L.starlink && !state.playing ? pool.concat(state.starlink) : pool;
     const view = state.satView = satSky(withStarlink, t, p.lat, p.lon);
     const selKey = state.selected && state.selected.key;
 
@@ -243,7 +260,7 @@
     }
 
     // МКС, Тяньгун, Хаббл: путь на ближайшие минуты, яркий там, где спутник на солнце
-    for (const s of state.sats.filter(x => x.featured)) {
+    for (const s of L.featured ? state.sats.filter(x => x.featured) : []) {
       const track = satTrack(s, t, p.lat, p.lon);
       ctx.lineWidth = 1.6;
       for (let i = 1; i < track.length; i++) {
@@ -275,7 +292,7 @@
   function drawPlanes(hits) {
     const P = state.planes;
     P.view = [];
-    if (!P.on || !P.list.length || !planesLive()) return;
+    if (!L.planes || !P.list.length || !planesLive()) return;
     const t = nowMs(), obs = planeObs();
     P.view = planeSky(P.list, t, obs);
     ctx.font = `${Math.max(9, size * 0.018)}px "Golos Text", sans-serif`; ctx.textAlign = 'left';
@@ -302,7 +319,7 @@
   function planesPanel() {
     const P = state.planes, st = $('#planesStatus'), form = $('#proxyForm');
     form.hidden = !!P.proxy && !P.error;
-    if (!P.on) { st.textContent = ''; $('#planesList').innerHTML = ''; return; }
+    if (!L.planes) { st.textContent = 'Самолёты выключены в слоях.'; $('#planesList').innerHTML = ''; return; }
     if (!P.proxy) {
       $('#planesList').innerHTML = '';
       st.textContent = 'Самолёты приходят через посредника — маленькую бесплатную программу на Cloudflare (её код в папке worker/). Вставь сюда её адрес.';
@@ -327,7 +344,7 @@
 
   async function pollPlanes() {
     const P = state.planes;
-    if (!P.on || !P.proxy || P.busy || document.hidden || !planesLive()) return;
+    if (!L.planes || !P.proxy || P.busy || document.hidden || !planesLive()) return;
     P.busy = true;
     try {
       const r = await fetchPlanes(P.proxy, state.place.lat, state.place.lon);
@@ -546,10 +563,10 @@
   function updateNowList() {
     const s = state.snap; if (!s) return;
     const all = [];
-    if (s.sun.alt > 0) all.push({ key: 'sun', name: 'Солнце', mag: -26.7, alt: s.sun.alt, az: s.sun.az });
-    if (s.moon.alt > 0) all.push({ key: 'moon', name: 'Луна', mag: s.moon.mag, alt: s.moon.alt, az: s.moon.az });
-    s.planets.forEach(p => { if (p.alt > 3 && p.elong > 12) all.push({ key: 'p:' + p.id, name: p.name, mag: p.mag, alt: p.alt, az: p.az }); });
-    s.stars.forEach(t => { if (t.alt > 5) all.push({ key: 's:' + t.n, name: t.n, mag: t.m, alt: t.alt, az: t.az }); });
+    if (L.sun && s.sun.alt > 0) all.push({ key: 'sun', name: 'Солнце', mag: -26.7, alt: s.sun.alt, az: s.sun.az });
+    if (L.moon && s.moon.alt > 0) all.push({ key: 'moon', name: 'Луна', mag: s.moon.mag, alt: s.moon.alt, az: s.moon.az });
+    if (L.planets) s.planets.forEach(p => { if (p.alt > 3 && p.elong > 12) all.push({ key: 'p:' + p.id, name: p.name, mag: p.mag, alt: p.alt, az: p.az }); });
+    if (L.stars) s.stars.forEach(t => { if (t.alt > 5) all.push({ key: 's:' + t.n, name: t.n, mag: t.m, alt: t.alt, az: t.az }); });
     state.satView.forEach(v => { if (v.sat.featured && v.visible) all.push({ key: 'sat:' + v.sat.id, name: v.sat.name, mag: v.mag, alt: v.alt, az: v.az }); });
     all.sort((a, b) => a.mag - b.mag);
     $('#nowTitle').textContent = state.offsetMin === 0 ? 'Самое яркое сейчас' : `Самое яркое в ${hhmm(nowMs())}`;
@@ -664,11 +681,6 @@
     }
     satStatus(); render();
   }
-  $('#tgPlanes').checked = state.planes.on;
-  $('#tgPlanes').addEventListener('change', e => {
-    state.planes.on = e.target.checked; store.set('planes', e.target.checked);
-    render(); planesPanel(); pollPlanes();
-  });
   $('#proxyUrl').value = state.planes.proxy;
   $('#proxyForm').addEventListener('submit', e => {
     e.preventDefault();
@@ -677,13 +689,23 @@
     state.planes.proxy = v; state.planes.error = ''; store.set('planesProxy', v);
     planesPanel(); pollPlanes();
   });
-  $('#tgBright').checked = state.satOpts.bright;
-  $('#tgStarlink').checked = state.satOpts.starlink;
-  $('#tgBright').addEventListener('change', e => { state.satOpts.bright = e.target.checked; store.set('satBright', e.target.checked); render(); });
-  $('#tgStarlink').addEventListener('change', e => {
-    state.satOpts.starlink = e.target.checked; store.set('satStarlink', e.target.checked);
-    if (e.target.checked && !state.starlink.length) loadStarlink(); else render();
+  // Слои: одни и те же кнопки под куполом и в режиме камеры
+  function renderLayers() {
+    const html = LAYERS.map(([k, name]) => `<button class="chip" data-layer="${k}" aria-pressed="${L[k]}">${name}</button>`).join('');
+    document.querySelectorAll('.layers').forEach(el => { el.innerHTML = html; });
+  }
+  function setLayer(k, on) {
+    L[k] = on; store.set('layers', L);
+    renderLayers();
+    if (k === 'starlink' && on && !state.starlink.length) loadStarlink();
+    if (k === 'planes') { planesPanel(); pollPlanes(); }
+    render(); updateNowList();
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-layer]'); if (!b) return;
+    setLayer(b.dataset.layer, !L[b.dataset.layer]);
   });
+  renderLayers();
 
   function refreshPanel() { const win = updateToday(); updateTonight(win); updateNowList(); updatePasses(); satStatus(); planesPanel(); }
 
@@ -697,7 +719,7 @@
   pollPlanes();
   setInterval(pollPlanes, 5000);                       // самолёты — раз в 5 секунд, между запросами упреждение
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollPlanes(); });
-  if (state.satOpts.starlink) loadStarlink();
+  if (L.starlink) loadStarlink();
   setInterval(loadSats, 3 * 3600e3);                   // свежие орбиты раз в 3 часа
 
   // для режима камеры (src/ar.js): те же данные и та же карточка, что у купола
