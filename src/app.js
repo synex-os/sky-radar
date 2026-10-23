@@ -702,6 +702,17 @@
   setInterval(checkReminders, 15000);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
+  // Установка как приложение: Chrome сам решает, когда можно предложить, — тогда показываем кнопку
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; $('#btnInstall').hidden = false; });
+  window.addEventListener('appinstalled', () => { installPrompt = null; $('#btnInstall').hidden = true; });
+  $('#btnInstall').addEventListener('click', async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => {});
+    installPrompt = null; $('#btnInstall').hidden = true;
+  });
+
   function satStatus() {
     const tle = state.tle; if (!tle) return;
     const ageMin = Math.round((Date.now() - tle.t) / 60000);

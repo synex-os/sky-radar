@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#060a15">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Небесный радар</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -198,6 +201,7 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
         </div>
       </div>
       <div class="layers" id="layers" aria-label="Что показывать"></div>
+      <button id="btnInstall" class="ar-open" hidden>Установить как приложение</button>
       <button id="btnAR" class="ar-open">Навести телефон на небо</button>
       <p class="hint">Подними экран над головой, верх к северу: так и выглядит небо. Поэтому восток слева. Нажми на любую точку, чтобы узнать, что это.</p>
       <div class="timebar">
@@ -1885,6 +1889,17 @@ async function fetchRoute(call) {
   });
   setInterval(checkReminders, 15000);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+  // Установка как приложение: Chrome сам решает, когда можно предложить, — тогда показываем кнопку
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; $('#btnInstall').hidden = false; });
+  window.addEventListener('appinstalled', () => { installPrompt = null; $('#btnInstall').hidden = true; });
+  $('#btnInstall').addEventListener('click', async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => {});
+    installPrompt = null; $('#btnInstall').hidden = true;
+  });
 
   function satStatus() {
     const tle = state.tle; if (!tle) return;
