@@ -7,7 +7,9 @@
 
 const ALLOWED_ORIGINS = ['https://synex-os.github.io', 'http://localhost:8765', 'http://localhost:8766'];
 const CACHE_SECONDS = 6;
-const COOLDOWN_SECONDS = 120;            // источник ответил «много запросов» — не трогаем его пару минут
+const COOLDOWN_SECONDS = 120;            // источник занят или упал — не трогаем его пару минут
+const BLOCKED_SECONDS = 1800;            // источник не пускает Cloudflare (403) — не стучимся полчаса
+const SOURCE_TIMEOUT_MS = 4000;          // телефон ждёт 10 с — дольше 4 с на один источник тратить нельзя
 const UA = 'sky-radar (github.com/synex-os/sky-radar)';
 
 // Пробуем по очереди. У всех — условия для личного некоммерческого использования; ссылка на источник — на сайте.
@@ -89,13 +91,13 @@ export default {
     const errors = [];
     for (const src of SOURCES) {
       if (await cache.match(cooldownKey(src.name))) { errors.push(`${src.name}: пауза после отказа`); continue; }
+      const pause = sec => ctx.waitUntil(cache.put(cooldownKey(src.name), new Response('1', { headers: { 'Cache-Control': `public, max-age=${sec}` } })));
       try {
-        const r = await fetch(src.url(rl, ro, dist), { headers: { 'User-Agent': UA } });
+        const r = await fetch(src.url(rl, ro, dist), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS) });
         if (!r.ok) {
           errors.push(`${src.name}: ${r.status}`);
-          if (r.status === 429 || r.status === 403) {
-            ctx.waitUntil(cache.put(cooldownKey(src.name), new Response('1', { headers: { 'Cache-Control': `public, max-age=${COOLDOWN_SECONDS}` } })));
-          }
+          if (r.status === 403) pause(BLOCKED_SECONDS);
+          else if (r.status === 429 || r.status >= 500) pause(COOLDOWN_SECONDS);
           continue;
         }
         const j = await r.json();
@@ -104,7 +106,8 @@ export default {
         ctx.waitUntil(cache.put(key, new Response(body, { headers })));
         return new Response(body, { headers: { ...headers, ...cors(origin) } });
       } catch (e) {
-        errors.push(`${src.name}: ${e.message}`);
+        errors.push(`${src.name}: ${e.name === 'TimeoutError' ? 'нет ответа' : e.message}`);
+        pause(COOLDOWN_SECONDS);
       }
     }
     return Response.json({ error: 'источники не ответили', details: errors }, { status: 502, headers: cors(origin) });
