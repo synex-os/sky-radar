@@ -25,9 +25,11 @@ const SAT_BLURB = {
 
 const TLE_GROUPS = {
   visual: { local: 'data/visual.tle', remote: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle' },
-  stations: { local: 'data/stations.tle', remote: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle' },
+  // если CelesTrak молчит, три главных спутника берём поштучно из запасного сервиса
+  stations: { local: 'data/stations.tle', remote: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle', byId: true },
   starlink: { local: 'data/starlink.tle', remote: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle' },
 };
+const TLE_BACKUP = id => `https://tle.ivanstanojevic.me/api/tle/${id}`;
 const TLE_MAX_AGE = 3 * 3600e3;           // свежий кэш не перезапрашиваем: CelesTrak просит не дёргать чаще
 
 function satKind(name) {
@@ -69,16 +71,29 @@ async function loadTleGroup(group, opts = {}) {
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) { /* нет хранилища */ }
   if (cached && !opts.force && Date.now() - cached.t < TLE_MAX_AGE) return cached;
+  const save = (text, source) => {
+    const rec = { t: Date.now(), text, source };
+    try { localStorage.setItem(key, JSON.stringify(rec)); } catch (e) { /* переполнено — живём без кэша */ }
+    return rec;
+  };
   for (const url of [src.local, src.remote]) {
     try {
-      const res = await fetch(url, { cache: 'no-cache' });
+      const res = await fetch(url, { cache: 'no-cache', signal: AbortSignal.timeout(20000) });
       if (!res.ok) continue;
       const text = await res.text();
       if (!/^1 /m.test(text)) continue;              // вместо орбит пришла ошибка
-      const rec = { t: Date.now(), text, source: url === src.local ? 'site' : 'celestrak' };
-      try { localStorage.setItem(key, JSON.stringify(rec)); } catch (e) { /* переполнено — живём без кэша */ }
-      return rec;
+      return save(text, url === src.local ? 'site' : 'celestrak');
     } catch (e) { /* пробуем следующий источник */ }
+  }
+  if (src.byId) {
+    const got = await Promise.all(Object.keys(SAT_INFO).map(async id => {
+      try {
+        const j = await (await fetch(TLE_BACKUP(id), { signal: AbortSignal.timeout(20000) })).json();
+        return j.line1 ? `${j.name}\n${j.line1}\n${j.line2}` : '';
+      } catch (e) { return ''; }
+    }));
+    const text = got.filter(Boolean).join('\n');
+    if (text) return save(text, 'backup');
   }
   if (cached) return { ...cached, stale: true };
   throw new Error('Не удалось загрузить орбиты (' + group + ')');

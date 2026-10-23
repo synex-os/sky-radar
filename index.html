@@ -576,9 +576,11 @@ const SAT_BLURB = {
 
 const TLE_GROUPS = {
   visual: { local: 'data/visual.tle', remote: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle' },
-  stations: { local: 'data/stations.tle', remote: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle' },
+  // если CelesTrak молчит, три главных спутника берём поштучно из запасного сервиса
+  stations: { local: 'data/stations.tle', remote: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle', byId: true },
   starlink: { local: 'data/starlink.tle', remote: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle' },
 };
+const TLE_BACKUP = id => `https://tle.ivanstanojevic.me/api/tle/${id}`;
 const TLE_MAX_AGE = 3 * 3600e3;           // свежий кэш не перезапрашиваем: CelesTrak просит не дёргать чаще
 
 function satKind(name) {
@@ -620,16 +622,29 @@ async function loadTleGroup(group, opts = {}) {
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) { /* нет хранилища */ }
   if (cached && !opts.force && Date.now() - cached.t < TLE_MAX_AGE) return cached;
+  const save = (text, source) => {
+    const rec = { t: Date.now(), text, source };
+    try { localStorage.setItem(key, JSON.stringify(rec)); } catch (e) { /* переполнено — живём без кэша */ }
+    return rec;
+  };
   for (const url of [src.local, src.remote]) {
     try {
-      const res = await fetch(url, { cache: 'no-cache' });
+      const res = await fetch(url, { cache: 'no-cache', signal: AbortSignal.timeout(20000) });
       if (!res.ok) continue;
       const text = await res.text();
       if (!/^1 /m.test(text)) continue;              // вместо орбит пришла ошибка
-      const rec = { t: Date.now(), text, source: url === src.local ? 'site' : 'celestrak' };
-      try { localStorage.setItem(key, JSON.stringify(rec)); } catch (e) { /* переполнено — живём без кэша */ }
-      return rec;
+      return save(text, url === src.local ? 'site' : 'celestrak');
     } catch (e) { /* пробуем следующий источник */ }
+  }
+  if (src.byId) {
+    const got = await Promise.all(Object.keys(SAT_INFO).map(async id => {
+      try {
+        const j = await (await fetch(TLE_BACKUP(id), { signal: AbortSignal.timeout(20000) })).json();
+        return j.line1 ? `${j.name}\n${j.line1}\n${j.line2}` : '';
+      } catch (e) { return ''; }
+    }));
+    const text = got.filter(Boolean).join('\n');
+    if (text) return save(text, 'backup');
   }
   if (cached) return { ...cached, stale: true };
   throw new Error('Не удалось загрузить орбиты (' + group + ')');
@@ -1284,7 +1299,7 @@ function satPasses(s, fromMs, hours, lat, lon, stepSec = 10) {
     const tle = state.tle; if (!tle) return;
     const ageMin = Math.round((Date.now() - tle.t) / 60000);
     const age = ageMin < 60 ? `${ageMin} мин назад` : ageMin < 2880 ? `${Math.round(ageMin / 60)} ч назад` : `${Math.round(ageMin / 1440)} дн. назад`;
-    let line = `Орбиты: CelesTrak, загружены ${age}. Спутников: ${fmt(state.sats.length)}`;
+    let line = `Орбиты: ${tle.source === 'backup' ? 'tle.ivanstanojevic.me (CelesTrak не ответил)' : 'CelesTrak'}, загружены ${age}. Спутников: ${fmt(state.sats.length)}`;
     if (state.starlink.length) line += ` + ${fmt(state.starlink.length)} Starlink`;
     line += '.';
     if (tle.stale) line += ' Сеть недоступна, показываю сохранённые орбиты.';
@@ -1294,10 +1309,11 @@ function satPasses(s, fromMs, hours, lat, lon, stepSec = 10) {
 
   async function loadSats() {
     try {
-      const [vis, st] = await Promise.all([loadTleGroup('visual'), loadTleGroup('stations')]);
+      // «яркие» могут не прийти — тогда хватит и трёх главных
+      const [vis, st] = await Promise.all([loadTleGroup('visual').catch(() => null), loadTleGroup('stations')]);
       // из «станций» берём только сами станции: пристыкованные корабли летят там же
-      state.sats = mergeSats(parseTle(st.text, 'stations').filter(s => SAT_INFO[s.id]), parseTle(vis.text, 'visual'));
-      state.tle = vis;
+      state.sats = mergeSats(parseTle(st.text, 'stations').filter(s => SAT_INFO[s.id]), vis ? parseTle(vis.text, 'visual') : []);
+      state.tle = vis || st;
       satStatus(); render(); updatePasses(); updateNowList();
     } catch (e) {
       $('#passes').innerHTML = '<li class="note">Не получилось загрузить орбиты спутников. Нет сети? Попробую ещё раз через минуту.</li>';

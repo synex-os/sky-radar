@@ -535,7 +535,7 @@
     const tle = state.tle; if (!tle) return;
     const ageMin = Math.round((Date.now() - tle.t) / 60000);
     const age = ageMin < 60 ? `${ageMin} мин назад` : ageMin < 2880 ? `${Math.round(ageMin / 60)} ч назад` : `${Math.round(ageMin / 1440)} дн. назад`;
-    let line = `Орбиты: CelesTrak, загружены ${age}. Спутников: ${fmt(state.sats.length)}`;
+    let line = `Орбиты: ${tle.source === 'backup' ? 'tle.ivanstanojevic.me (CelesTrak не ответил)' : 'CelesTrak'}, загружены ${age}. Спутников: ${fmt(state.sats.length)}`;
     if (state.starlink.length) line += ` + ${fmt(state.starlink.length)} Starlink`;
     line += '.';
     if (tle.stale) line += ' Сеть недоступна, показываю сохранённые орбиты.';
@@ -545,10 +545,11 @@
 
   async function loadSats() {
     try {
-      const [vis, st] = await Promise.all([loadTleGroup('visual'), loadTleGroup('stations')]);
+      // «яркие» могут не прийти — тогда хватит и трёх главных
+      const [vis, st] = await Promise.all([loadTleGroup('visual').catch(() => null), loadTleGroup('stations')]);
       // из «станций» берём только сами станции: пристыкованные корабли летят там же
-      state.sats = mergeSats(parseTle(st.text, 'stations').filter(s => SAT_INFO[s.id]), parseTle(vis.text, 'visual'));
-      state.tle = vis;
+      state.sats = mergeSats(parseTle(st.text, 'stations').filter(s => SAT_INFO[s.id]), vis ? parseTle(vis.text, 'visual') : []);
+      state.tle = vis || st;
       satStatus(); render(); updatePasses(); updateNowList();
     } catch (e) {
       $('#passes').innerHTML = '<li class="note">Не получилось загрузить орбиты спутников. Нет сети? Попробую ещё раз через минуту.</li>';
