@@ -1,0 +1,24 @@
+# Разведка источников орбит: запускается вручную, ничего не выкладывает
+name: Разведка источников орбит
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Проверить источники
+        run: |
+          probe() {
+            local name="$1" url="$2"
+            local out; out=$(curl -sS -m 40 -D /tmp/h -o /tmp/b -w '%{http_code} %{size_download}B %{time_total}s' -H "Origin: https://synex-os.github.io" "$url" 2>&1)
+            local cors; cors=$(tr -d '\r' < /tmp/h 2>/dev/null | grep -i '^access-control-allow-origin' | cut -d' ' -f2)
+            local tle; tle=$(grep -c '^1 ' /tmp/b 2>/dev/null || echo 0)
+            echo "::notice::$name → $out, CORS=${cors:-нет}, TLE-строк=$tle, начало: $(head -c 160 /tmp/b 2>/dev/null | tr '\n\r' '  ')"
+          }
+          probe ivan-starlink "https://tle.ivanstanojevic.me/api/tle?search=STARLINK&page-size=100"
+          probe ivan-all "https://tle.ivanstanojevic.me/api/tle?page-size=100"
+          probe satnogs "https://db.satnogs.org/api/tle/?format=json"
+          probe celestrak-com "https://celestrak.com/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle"
+          probe celestrak-txt "https://celestrak.org/NORAD/elements/visual.txt"
+          probe amsat "https://www.amsat.org/tle/current/nasabare.txt"
