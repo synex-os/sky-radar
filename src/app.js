@@ -699,4 +699,7 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollPlanes(); });
   if (state.satOpts.starlink) loadStarlink();
   setInterval(loadSats, 3 * 3600e3);                   // свежие орбиты раз в 3 часа
+
+  // для режима камеры (src/ar.js): те же данные и та же карточка, что у купола
+  window.SkyApp = { state, store, select, fmt, goNow: () => $('#btnNow').click() };
 })();

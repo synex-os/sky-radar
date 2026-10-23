@@ -102,6 +102,27 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 #proxyForm { display: flex; gap: 8px; margin-top: 10px; }
 #proxyForm[hidden] { display: none; }
 #proxyForm input { flex: 1; min-width: 0; }
+.ar-open { display: block; width: 100%; margin: 10px 0 4px; padding: 12px; font-weight: 600;
+  border-color: color-mix(in srgb, var(--scope) 55%, var(--rule)); color: var(--scope); }
+.ar { position: fixed; inset: 0; z-index: 50; background: #000; touch-action: none; overflow: hidden; }
+.ar[hidden] { display: none; }
+.ar video, .ar canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ar video { object-fit: cover; }
+.ar button { background: rgba(6,10,21,.72); backdrop-filter: blur(4px); }
+.ar-top { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; right: 12px;
+  display: flex; gap: 10px; align-items: flex-start; }
+#arStatus { flex: 1; font-size: 12.5px; color: #dfe8f7; background: rgba(6,10,21,.62); padding: 6px 10px; border-radius: 8px; }
+.ar-bottom { position: absolute; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: grid; gap: 8px; }
+#arInfo { background: rgba(6,10,21,.78); border: 1px solid var(--rule); border-radius: 12px; padding: 10px 12px; font-size: 13.5px; }
+#arInfo:empty { display: none; }
+#arInfo .ar-name { font-family: var(--font-display); font-weight: 700; font-size: 18px; }
+#arInfo .ar-name small { font-family: var(--font-body); font-weight: 400; font-size: 11.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; margin-left: 6px; }
+#arInfo .ar-where { color: var(--scope); margin: 2px 0 4px; }
+#arInfo .ar-facts { display: grid; gap: 1px; color: #cfd8ea; }
+.ar-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ar-row label { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: #dfe8f7; flex: 1 1 180px;
+  background: rgba(6,10,21,.62); padding: 7px 10px; border-radius: 8px; }
+.ar-row input[type=range] { flex: 1; min-width: 0; accent-color: var(--scope); }
 .toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 13.5px; }
 .toggles label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
 .toggles input { accent-color: var(--sat); width: 16px; height: 16px; margin: 0; }
@@ -146,6 +167,7 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
           <p class="card-text"></p>
         </div>
       </div>
+      <button id="btnAR" class="ar-open">Навести телефон на небо</button>
       <p class="hint">Подними экран над головой, верх к северу: так и выглядит небо. Поэтому восток слева. Нажми на любую точку, чтобы узнать, что это.</p>
       <div class="timebar">
         <span class="dim" aria-hidden="true" style="font-size:12px;color:var(--dim)">−12 ч</span>
@@ -228,6 +250,23 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
   </main>
 </div>
 
+<div id="ar" class="ar" hidden aria-label="Небо через камеру">
+  <video id="arVideo" playsinline muted autoplay></video>
+  <canvas id="arCanvas"></canvas>
+  <div class="ar-top">
+    <span id="arStatus" role="status"></span>
+    <button id="arClose">Купол</button>
+  </div>
+  <div class="ar-bottom">
+    <div id="arInfo" aria-live="polite"></div>
+    <div class="ar-row">
+      <button id="arCalib" title="Наведи крестик на Луну, Солнце или яркую планету и нажми">Подогнать компас по светилу</button>
+      <button id="arReset" title="Сбросить поправку компаса">Сброс</button>
+      <label>Поле зрения <input id="arFov" type="range" min="30" max="100" step="1"></label>
+    </div>
+  </div>
+</div>
+
 <script>
 /*@@ASTRO@@*/
 /*@@STARS@@*/
@@ -235,6 +274,7 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 /*@@SATS@@*/
 /*@@PLANES@@*/
 /*@@APP@@*/
+/*@@AR@@*/
 </script>
 </body>
 </html>
