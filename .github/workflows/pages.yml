@@ -36,13 +36,14 @@ jobs:
           touch _site/.nojekyll
 
       - name: Скачать орбиты
-        # CelesTrak не любит частых запросов и бывает недоступен с серверов GitHub — ждём недолго.
-        # Не вышло — берём прошлую копию с нашего же сайта; для МКС, Тяньгуна и Хаббла есть запасной сервис.
+        # Орбиты с CelesTrak. Не вышло — берём прошлую копию с нашего же сайта; для МКС, Тяньгуна и Хаббла есть запасной сервис.
         run: |
           site="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data"
           for g in visual stations starlink; do
             f="_site/data/$g.tle"
-            if curl -fsS --connect-timeout 15 --max-time 90 -A "sky-radar (github.com/${{ github.repository }})" \
+            # CelesTrak принимает соединения через раз (бывает, подключение длится полминуты) — пробуем настойчиво
+            if curl -fsS -4 --connect-timeout 45 --max-time 180 --retry 4 --retry-all-errors --retry-delay 10 \
+                 -A "sky-radar (github.com/${{ github.repository }})" \
                  "https://celestrak.org/NORAD/elements/gp.php?GROUP=$g&FORMAT=tle" -o "$f" && grep -q '^1 ' "$f"; then
               echo "::notice::$g: $(grep -c '^1 ' $f) орбит с CelesTrak"
             elif curl -fsS --connect-timeout 15 --max-time 60 "$site/$g.tle" -o "$f" && grep -q '^1 ' "$f"; then
@@ -59,14 +60,6 @@ jobs:
               rm -f "$f"
               echo "::warning::$g: орбит нет, браузер попробует CelesTrak сам"
             fi
-          done
-
-      - name: Проверить, пустят ли источники браузер (CORS)
-        continue-on-error: true
-        run: |
-          for u in "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=tle" "https://tle.ivanstanojevic.me/api/tle/25544"; do
-            h=$(curl -sS -m 20 -o /dev/null -D - -H "Origin: https://${{ github.repository_owner }}.github.io" "$u" 2>&1 | tr -d '\r' | grep -iE '^(HTTP|access-control-allow-origin)' | tr '\n' ' ')
-            echo "::notice::$u → ${h:-нет ответа}"
           done
 
       - uses: actions/upload-pages-artifact@v3
