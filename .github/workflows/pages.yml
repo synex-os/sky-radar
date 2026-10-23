@@ -1,0 +1,61 @@
+# Собирает сайт и кладёт рядом свежие орбиты спутников с CelesTrak.
+# Запускается при каждом изменении в main и раз в 6 часов по расписанию.
+# Браузеру так проще: орбиты лежат на нашем же сайте, а CelesTrak не дёргают тысячи раз.
+name: Сайт и свежие орбиты
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Собрать index.html
+        run: |
+          python3 build.py
+          mkdir -p _site/data
+          cp index.html _site/
+          touch _site/.nojekyll
+
+      - name: Скачать орбиты
+        # CelesTrak обновляет данные раз в пару часов и не любит повторных запросов.
+        # Если он отказал — берём копию с нашего же сайта, чтобы не остаться без орбит.
+        run: |
+          for g in visual stations starlink; do
+            if curl -fsS --retry 3 --max-time 120 -A "sky-radar (github.com/${{ github.repository }})" \
+                 "https://celestrak.org/NORAD/elements/gp.php?GROUP=$g&FORMAT=tle" -o "_site/data/$g.tle" \
+               && grep -q '^1 ' "_site/data/$g.tle"; then
+              echo "$g: $(grep -c '^1 ' _site/data/$g.tle) орбит с CelesTrak"
+            elif curl -fsS --max-time 60 "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/$g.tle" -o "_site/data/$g.tle" \
+               && grep -q '^1 ' "_site/data/$g.tle"; then
+              echo "::warning::$g: CelesTrak не ответил, оставляю прошлую копию"
+            else
+              rm -f "_site/data/$g.tle"
+              echo "::warning::$g: орбит нет, браузер попробует CelesTrak сам"
+            fi
+          done
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

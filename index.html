@@ -18,6 +18,7 @@
   --dim: #8794b1;        /* второстепенный текст */
   --scope: #7cc4ff;      /* акцент: «стекло» прибора, выделение */
   --planet: #f3d48b;     /* планеты и эклиптика */
+  --sat: #8ef0c4;        /* спутники на солнце: «зеркальца» */
   --font-display: "Jura", "Golos Text", system-ui, sans-serif;
   --font-body: "Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -61,7 +62,8 @@ button[aria-pressed="true"] { border-color: var(--scope); color: var(--scope); }
 
 .card { position: absolute; left: 10px; right: 10px; bottom: 10px; max-width: 460px; margin: 0 auto;
   background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid color-mix(in srgb, var(--scope) 40%, var(--rule));
-  border-radius: 14px; padding: 14px 16px 16px; box-shadow: 0 12px 40px rgba(0,0,0,.5); backdrop-filter: blur(6px); }
+  border-radius: 14px; padding: 14px 16px 16px; box-shadow: 0 12px 40px rgba(0,0,0,.5); backdrop-filter: blur(6px);
+  max-height: calc(100% - 20px); overflow-y: auto; overscroll-behavior: contain; }
 .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .card-kind { font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
 .card-name { font-family: var(--font-display); font-weight: 700; font-size: 24px; line-height: 1.15; margin: 2px 0 0; }
@@ -92,6 +94,11 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .sw-ecl { border-top: 1.5px dashed var(--planet); height: 0; margin-top: 6px; }
 .sw-planet { width: 10px; height: 10px; border-radius: 50%; background: var(--planet); justify-self: center; }
 .sw-line { border-top: 1px solid rgba(124,196,255,.6); height: 0; }
+.sw-sat { border-top: 2px solid var(--sat); height: 0; position: relative; }
+.sw-sat::after { content: ''; position: absolute; right: 0; top: -5px; width: 8px; height: 8px; border-radius: 50%; background: var(--sat); }
+.toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 13.5px; }
+.toggles label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.toggles input { accent-color: var(--sat); width: 16px; height: 16px; margin: 0; }
 
 #presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 #placeForm { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: end; }
@@ -159,6 +166,16 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
       </section>
 
       <section class="block">
+        <h2>Пролёты МКС, Тяньгуна и Хаббла</h2>
+        <ul class="rows" id="passes"><li class="note">Загружаю орбиты…</li></ul>
+        <div class="toggles">
+          <label><input type="checkbox" id="tgBright"> Яркие спутники</label>
+          <label><input type="checkbox" id="tgStarlink"> Starlink</label>
+        </div>
+        <p class="note" id="satStatus"></p>
+      </section>
+
+      <section class="block">
         <h2 id="nowTitle">Самое яркое сейчас</h2>
         <ul class="rows" id="nowList"></ul>
       </section>
@@ -169,6 +186,7 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
           <li><span class="sw sw-ring"></span><span>Внешний круг — горизонт, центр — точка прямо над головой. Кольца — высота 30° и 60°.</span></li>
           <li><span class="sw sw-ecl"></span><span>Эклиптика — дорога Солнца по небу. Луна и планеты всегда держатся рядом с ней.</span></li>
           <li><span class="sw sw-planet"></span><span>Планеты. Звёзды мерцают, а планеты светят ровно: они ближе и видны маленьким диском, а не точкой.</span></li>
+          <li><span class="sw sw-sat"></span><span>Спутники. Мятные светятся отражённым солнцем и видны глазом, серые сейчас в тени Земли или тонут в дневном свете. Линия — путь МКС, Тяньгуна и Хаббла на ближайшие минуты.</span></li>
           <li><span class="sw sw-line"></span><span>Фигуры созвездий: Большая Медведица, Орион, Кассиопея, Лебедь, Лев, Пегас и другие.</span></li>
         </ul>
         <p class="note">Перемотай время ползунком или нажми «Ускорить»: увидишь, как всё небо вращается вокруг Полярной звезды.</p>
@@ -522,6 +540,213 @@ const CONSTELLATION_LINES = [
 
 if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES };
 
+/*!
+ * satellite-js v5.0.0
+ * (c) 2013 Shashwat Kandadai and UCSC
+ * https://github.com/shashwatak/satellite-js
+ * License: MIT
+ */
+
+!function(o,t){"object"==typeof exports&&"undefined"!=typeof module?module.exports=t():"function"==typeof define&&define.amd?define(t):(o="undefined"!=typeof globalThis?globalThis:o||self).satellite=t()}(this,(function(){"use strict";var o=Math.PI,t=2*o,e=o/180,s=180/o,a=1440,n=398600.8,d=6378.135,r=60/Math.sqrt(650942.9922085947),i=d*r/60,c=1/r,h=.001082616,m=-253881e-11,l=-165597e-11,p=m/h,x=2/3;function g(o,t){for(var e=[31,o%4==0?29:28,31,30,31,30,31,31,30,31,30,31],s=Math.floor(t),a=1,n=0;s>n+e[a-1]&&a<12;)n+=e[a-1],a+=1;var d=a,r=s-n,i=24*(t-s),c=Math.floor(i);i=60*(i-c);var h=Math.floor(i);return{mon:d,day:r,hr:c,minute:h,sec:60*(i-h)}}function M(o,t,e,s,a,n){var d=arguments.length>6&&void 0!==arguments[6]?arguments[6]:0;return 367*o-Math.floor(7*(o+Math.floor((t+9)/12))*.25)+Math.floor(275*t/9)+e+1721013.5+((d/6e4+n/60+a)/60+s)/24}function f(o,t,e,s,a,n,d){if(o instanceof Date){var r=o;return M(r.getUTCFullYear(),r.getUTCMonth()+1,r.getUTCDate(),r.getUTCHours(),r.getUTCMinutes(),r.getUTCSeconds(),r.getUTCMilliseconds())}return M(o,t,e,s,a,n,d)}function u(e,s){var a,n,d,r,i,c,h,m,l,p,x,g,M,f,u,z,v,y,b=e.e3,q=e.ee2,w=e.peo,T=e.pgho,j=e.pho,E=e.pinco,F=e.plo,A=e.se2,C=e.se3,L=e.sgh2,S=e.sgh3,U=e.sgh4,D=e.sh2,I=e.sh3,R=e.si2,_=e.si3,k=e.sl2,O=e.sl3,P=e.sl4,Z=e.t,G=e.xgh2,H=e.xgh3,Y=e.xgh4,$=e.xh2,B=e.xh3,J=e.xi2,K=e.xi3,N=e.xl2,Q=e.xl3,V=e.xl4,W=e.zmol,X=e.zmos,oo=s.init,to=s.opsmode,eo=s.ep,so=s.inclp,ao=s.nodep,no=s.argpp,ro=s.mp;y=X+119459e-10*Z,"y"===oo&&(y=X),v=y+.0335*Math.sin(y);var io=A*(h=.5*(f=Math.sin(v))*f-.25)+C*(m=-.5*f*Math.cos(v)),co=R*h+_*m,ho=k*h+O*m+P*f,mo=L*h+S*m+U*f,lo=D*h+I*m;return y=W+.00015835218*Z,"y"===oo&&(y=W),v=y+.1098*Math.sin(y),l=io+(q*(h=.5*(f=Math.sin(v))*f-.25)+b*(m=-.5*f*Math.cos(v))),g=co+(J*h+K*m),M=ho+(N*h+Q*m+V*f),p=mo+(G*h+H*m+Y*f),x=lo+($*h+B*m),"n"===oo&&(M-=F,p-=T,x-=j,so+=g-=E,eo+=l-=w,r=Math.sin(so),d=Math.cos(so),so>=.2?(no+=p-=d*(x/=r),ao+=x,ro+=M):(a=r*(c=Math.sin(ao)),n=r*(i=Math.cos(ao)),a+=x*i+g*d*c,n+=-x*c+g*d*i,(ao%=t)<0&&"a"===to&&(ao+=t),u=ro+no+d*ao,u+=M+p-g*ao*r,z=ao,(ao=Math.atan2(a,n))<0&&"a"===to&&(ao+=t),Math.abs(z-ao)>o&&(ao<z?ao+=t:ao-=t),no=u-(ro+=M)-d*ao)),{ep:eo,inclp:so,nodep:ao,argpp:no,mp:ro}}function z(o){var s=(o-2451545)/36525,a=-62e-7*s*s*s+.093104*s*s+3164400184.812866*s+67310.54841;return(a=a*e/240%t)<0&&(a+=t),a}function v(){return(arguments.length<=0?void 0:arguments[0])instanceof Date||arguments.length>1?z(f.apply(void 0,arguments)):z.apply(void 0,arguments)}function y(e,s){var a,n,c,m,l,g,M,f,z,v,y,b,q,w,T,j,E,F,A,C,L,S,U,D,I,R;e.t=s,e.error=0;var _=e.mo+e.mdot*e.t,k=e.argpo+e.argpdot*e.t,O=e.nodeo+e.nodedot*e.t;f=k,C=_;var P=e.t*e.t;if(S=O+e.nodecf*P,j=1-e.cc1*e.t,E=e.bstar*e.cc4*e.t,F=e.t2cof*P,1!==e.isimp){g=e.omgcof*e.t;var Z=1+e.eta*Math.cos(_);C=_+(T=g+e.xmcof*(Z*Z*Z-e.delmo)),f=k-T,b=(y=P*e.t)*e.t,j=j-e.d2*P-e.d3*y-e.d4*b,E+=e.bstar*e.cc5*(Math.sin(C)-e.sinmao),F=F+e.t3cof*y+b*(e.t4cof+e.t*e.t5cof)}L=e.no;var G=e.ecco;if(A=e.inclo,"d"===e.method){q=e.t;var H=function(o){var e,s,a,n,d,r,i,c,h=o.irez,m=o.d2201,l=o.d2211,p=o.d3210,x=o.d3222,g=o.d4410,M=o.d4422,f=o.d5220,u=o.d5232,z=o.d5421,v=o.d5433,y=o.dedt,b=o.del1,q=o.del2,w=o.del3,T=o.didt,j=o.dmdt,E=o.dnodt,F=o.domdt,A=o.argpo,C=o.argpdot,L=o.t,S=o.tc,U=o.gsto,D=o.xfact,I=o.xlamo,R=o.no,_=o.atime,k=o.em,O=o.argpm,P=o.inclm,Z=o.xli,G=o.mm,H=o.xni,Y=o.nodem,$=o.nm,B=.13130908,J=2.8843198,K=.37448087,N=5.7686396,Q=.95240898,V=1.8014998,W=1.050833,X=4.4108898,oo=259200,to=0,eo=0,so=(U+.0043752690880113*S)%t;if(k+=y*L,P+=T*L,O+=F*L,Y+=E*L,G+=j*L,0!==h){(0===_||L*_<=0||Math.abs(L)<Math.abs(_))&&(_=0,H=R,Z=I),e=L>0?720:-720;for(var ao=381;381===ao;)2!==h?(i=b*Math.sin(Z-B)+q*Math.sin(2*(Z-J))+w*Math.sin(3*(Z-K)),d=H+D,r=b*Math.cos(Z-B)+2*q*Math.cos(2*(Z-J))+3*w*Math.cos(3*(Z-K)),r*=d):(a=(c=A+C*_)+c,s=Z+Z,i=m*Math.sin(a+Z-N)+l*Math.sin(Z-N)+p*Math.sin(c+Z-Q)+x*Math.sin(-c+Z-Q)+g*Math.sin(a+s-V)+M*Math.sin(s-V)+f*Math.sin(c+Z-W)+u*Math.sin(-c+Z-W)+z*Math.sin(c+s-X)+v*Math.sin(-c+s-X),d=H+D,r=m*Math.cos(a+Z-N)+l*Math.cos(Z-N)+p*Math.cos(c+Z-Q)+x*Math.cos(-c+Z-Q)+f*Math.cos(c+Z-W)+u*Math.cos(-c+Z-W)+2*(g*Math.cos(a+s-V)+M*Math.cos(s-V)+z*Math.cos(c+s-X)+v*Math.cos(-c+s-X)),r*=d),Math.abs(L-_)>=720?ao=381:(eo=L-_,ao=0),381===ao&&(Z+=d*e+i*oo,H+=i*e+r*oo,_+=e);$=H+i*eo+r*eo*eo*.5,n=Z+d*eo+i*eo*eo*.5,1!==h?(G=n-2*Y+2*so,to=$-R):(G=n-Y-O+so,to=$-R),$=R+to}return{atime:_,em:k,argpm:O,inclm:P,xli:Z,mm:G,xni:H,nodem:Y,dndt:to,nm:$}}({irez:e.irez,d2201:e.d2201,d2211:e.d2211,d3210:e.d3210,d3222:e.d3222,d4410:e.d4410,d4422:e.d4422,d5220:e.d5220,d5232:e.d5232,d5421:e.d5421,d5433:e.d5433,dedt:e.dedt,del1:e.del1,del2:e.del2,del3:e.del3,didt:e.didt,dmdt:e.dmdt,dnodt:e.dnodt,domdt:e.domdt,argpo:e.argpo,argpdot:e.argpdot,t:e.t,tc:q,gsto:e.gsto,xfact:e.xfact,xlamo:e.xlamo,no:e.no,atime:e.atime,em:G,argpm:f,inclm:A,xli:e.xli,mm:C,xni:e.xni,nodem:S,nm:L});G=H.em,f=H.argpm,A=H.inclm,C=H.mm,S=H.nodem,L=H.nm}if(L<=0)return e.error=2,[!1,!1];var Y=Math.pow(r/L,x)*j*j;if(L=r/Math.pow(Y,1.5),(G-=E)>=1||G<-.001)return e.error=1,[!1,!1];G<1e-6&&(G=1e-6),D=(C+=e.no*F)+f+S;var $=G;if(U=A,z=f%=t,R=S%=t,I=C=((D%=t)-f-S)%t,m=Math.sin(A),c=Math.cos(A),"d"===e.method){var B=u(e,{inclo:e.inclo,init:"n",ep:$,inclp:U,nodep:R,argpp:z,mp:I,opsmode:e.operationmode});if($=B.ep,R=B.nodep,z=B.argpp,I=B.mp,(U=B.inclp)<0&&(U=-U,R+=o,z-=o),$<0||$>1)return e.error=3,[!1,!1]}"d"===e.method&&(m=Math.sin(U),c=Math.cos(U),e.aycof=-.5*p*m,Math.abs(c+1)>15e-13?e.xlcof=-.25*p*m*(3+5*c)/(1+c):e.xlcof=-.25*p*m*(3+5*c)/15e-13);var J=$*Math.cos(z);T=1/(Y*(1-$*$));var K=$*Math.sin(z)+T*e.aycof,N=(I+z+R+T*e.xlcof*J-R)%t;M=N,w=9999.9;for(var Q=1;Math.abs(w)>=1e-12&&Q<=10;)n=Math.sin(M),w=(N-K*(a=Math.cos(M))+J*n-M)/(w=1-a*J-n*K),Math.abs(w)>=.95&&(w=w>0?.95:-.95),M+=w,Q+=1;var V=J*a+K*n,W=J*n-K*a,X=J*J+K*K,oo=Y*(1-X);if(oo<0)return e.error=4,[!1,!1];var to=Y*(1-V),eo=Math.sqrt(Y)*W/to,so=Math.sqrt(oo)/to,ao=Math.sqrt(1-X),no=Y/to*(n-K-J*(T=W/(1+ao))),ro=Y/to*(a-J+K*T);v=Math.atan2(no,ro);var io=(ro+ro)*no,co=1-2*no*no,ho=.5*h*(T=1/oo),mo=ho*T;"d"===e.method&&(l=c*c,e.con41=3*l-1,e.x1mth2=1-l,e.x7thm1=7*l-1);var lo=to*(1-1.5*mo*ao*e.con41)+.5*ho*e.x1mth2*co;if(lo<1)return e.error=6,{position:!1,velocity:!1};v-=.25*mo*e.x7thm1*io;var po=R+1.5*mo*c*io,xo=U+1.5*mo*c*m*co,go=eo-L*ho*e.x1mth2*io/r,Mo=so+L*ho*(e.x1mth2*co+1.5*e.con41)/r,fo=Math.sin(v),uo=Math.cos(v),zo=Math.sin(po),vo=Math.cos(po),yo=Math.sin(xo),bo=Math.cos(xo),qo=-zo*bo,wo=vo*bo,To=qo*fo+vo*uo,jo=wo*fo+zo*uo,Eo=yo*fo;return{position:{x:lo*To*d,y:lo*jo*d,z:lo*Eo*d},velocity:{x:(go*To+Mo*(qo*uo-vo*fo))*i,y:(go*jo+Mo*(wo*uo-zo*fo))*i,z:(go*Eo+Mo*(yo*uo))*i}}}function b(e,s){var a,n,i,m,g,M,f,z,b,q,w,T,j,E,F,A,C,L,S,U,D,I,R,_,k,O,P,Z,G,H,Y,$,B,J,K,N,Q,V,W,X,oo,to,eo,so,ao,no,ro,io,co,ho,mo,lo,po=s.opsmode,xo=s.satn,go=s.epoch,Mo=s.xbstar,fo=s.xecco,uo=s.xargpo,zo=s.xinclo,vo=s.xmo,yo=s.xno,bo=s.xnodeo;e.isimp=0,e.method="n",e.aycof=0,e.con41=0,e.cc1=0,e.cc4=0,e.cc5=0,e.d2=0,e.d3=0,e.d4=0,e.delmo=0,e.eta=0,e.argpdot=0,e.omgcof=0,e.sinmao=0,e.t=0,e.t2cof=0,e.t3cof=0,e.t4cof=0,e.t5cof=0,e.x1mth2=0,e.x7thm1=0,e.mdot=0,e.nodedot=0,e.xlcof=0,e.xmcof=0,e.nodecf=0,e.irez=0,e.d2201=0,e.d2211=0,e.d3210=0,e.d3222=0,e.d4410=0,e.d4422=0,e.d5220=0,e.d5232=0,e.d5421=0,e.d5433=0,e.dedt=0,e.del1=0,e.del2=0,e.del3=0,e.didt=0,e.dmdt=0,e.dnodt=0,e.domdt=0,e.e3=0,e.ee2=0,e.peo=0,e.pgho=0,e.pho=0,e.pinco=0,e.plo=0,e.se2=0,e.se3=0,e.sgh2=0,e.sgh3=0,e.sgh4=0,e.sh2=0,e.sh3=0,e.si2=0,e.si3=0,e.sl2=0,e.sl3=0,e.sl4=0,e.gsto=0,e.xfact=0,e.xgh2=0,e.xgh3=0,e.xgh4=0,e.xh2=0,e.xh3=0,e.xi2=0,e.xi3=0,e.xl2=0,e.xl3=0,e.xl4=0,e.xlamo=0,e.zmol=0,e.zmos=0,e.atime=0,e.xli=0,e.xni=0,e.bstar=Mo,e.ecco=fo,e.argpo=uo,e.inclo=zo,e.mo=vo,e.no=yo,e.nodeo=bo,e.operationmode=po;e.init="y",e.t=0;var qo=function(o){var e=o.ecco,s=o.epoch,a=o.inclo,n=o.opsmode,d=o.no,i=e*e,c=1-i,m=Math.sqrt(c),l=Math.cos(a),p=l*l,g=Math.pow(r/d,x),M=.75*h*(3*p-1)/(m*c),f=M/(g*g),u=g*(1-f*f-f*(1/3+134*f*f/81));d/=1+(f=M/(u*u));var z,y=Math.pow(r/d,x),b=Math.sin(a),q=y*c,w=1-5*p,T=-w-p-p,j=1/y,E=q*q,F=y*(1-e);if("a"===n){var A=s-7305,C=Math.floor(A+1e-8),L=.017202791694070362;(z=(1.7321343856509375+L*C+(L+t)*(A-C)+A*A*5075514194322695e-30)%t)<0&&(z+=t)}else z=v(s+2433281.5);return{no:d,method:"n",ainv:j,ao:y,con41:T,con42:w,cosio:l,cosio2:p,eccsq:i,omeosq:c,posq:E,rp:F,rteosq:m,sinio:b,gsto:z}}({satn:xo,ecco:e.ecco,epoch:go,inclo:e.inclo,no:e.no,method:e.method,opsmode:e.operationmode}),wo=qo.ao,To=qo.con42,jo=qo.cosio,Eo=qo.cosio2,Fo=qo.eccsq,Ao=qo.omeosq,Co=qo.posq,Lo=qo.rp,So=qo.rteosq,Uo=qo.sinio;if(e.no=qo.no,e.con41=qo.con41,e.gsto=qo.gsto,e.a=Math.pow(e.no*c,-2/3),e.alta=e.a*(1+e.ecco)-1,e.altp=e.a*(1-e.ecco)-1,e.error=0,Ao>=0||e.no>=0){if(e.isimp=0,Lo<1.034492841559484&&(e.isimp=1),_=1.0122292801892716,L=1.880279159015271e-9,(F=(Lo-1)*d)<156){_=F-78,F<98&&(_=20);var Do=(120-_)/d;L=Do*Do*Do*Do,_=_/d+1}A=1/Co,to=1/(wo-_),e.eta=wo*e.ecco*to,T=e.eta*e.eta,w=e.ecco*e.eta,C=Math.abs(1-T),m=(f=(M=L*Math.pow(to,4))/Math.pow(C,3.5))*e.no*(wo*(1+1.5*T+w*(4+T))+.375*h*to/C*e.con41*(8+3*T*(8+T))),e.cc1=e.bstar*m,g=0,e.ecco>1e-4&&(g=-2*M*to*p*e.no*Uo/e.ecco),e.x1mth2=1-Eo,e.cc4=2*e.no*f*wo*Ao*(e.eta*(2+.5*T)+e.ecco*(.5+2*T)-h*to/(wo*C)*(-3*e.con41*(1-2*w+T*(1.5-.5*w))+.75*e.x1mth2*(2*T-w*(1+T))*Math.cos(2*e.argpo))),e.cc5=2*f*wo*Ao*(1+2.75*(T+w)+w*T),z=Eo*Eo,X=.5*(W=1.5*h*A*e.no)*h*A,oo=-.46875*l*A*A*e.no,e.mdot=e.no+.5*W*So*e.con41+.0625*X*So*(13-78*Eo+137*z),e.argpdot=-.5*W*To+.0625*X*(7-114*Eo+395*z)+oo*(3-36*Eo+49*z),so=-W*jo,e.nodedot=so+(.5*X*(4-19*Eo)+2*oo*(3-7*Eo))*jo,eo=e.argpdot+e.nodedot,e.omgcof=e.bstar*g*Math.cos(e.argpo),e.xmcof=0,e.ecco>1e-4&&(e.xmcof=-x*M*e.bstar/w),e.nodecf=3.5*Ao*so*e.cc1,e.t2cof=1.5*e.cc1,Math.abs(jo+1)>15e-13?e.xlcof=-.25*p*Uo*(3+5*jo)/(1+jo):e.xlcof=-.25*p*Uo*(3+5*jo)/15e-13,e.aycof=-.5*p*Uo;var Io=1+e.eta*Math.cos(e.mo);if(e.delmo=Io*Io*Io,e.sinmao=Math.sin(e.mo),e.x7thm1=7*Eo-1,2*o/e.no>=225){e.method="d",e.isimp=1,0,j=e.inclo;var Ro=function(o){var e,s,a,n,d,r,i,c,h,m,l,p,x,g,M,f,u,z,v,y,b,q,w,T,j,E,F,A,C,L,S,U,D,I,R,_,k,O,P,Z,G,H,Y,$,B,J,K,N,Q,V,W,X,oo,to,eo,so,ao,no,ro,io,co,ho,mo,lo=o.epoch,po=o.ep,xo=o.argpp,go=o.tc,Mo=o.inclp,fo=o.nodep,uo=.01675,zo=.0549,vo=o.np,yo=po,bo=Math.sin(fo),qo=Math.cos(fo),wo=Math.sin(xo),To=Math.cos(xo),jo=Math.sin(Mo),Eo=Math.cos(Mo),Fo=yo*yo,Ao=1-Fo,Co=Math.sqrt(Ao),Lo=lo+18261.5+go/1440,So=(4.523602-.00092422029*Lo)%t,Uo=Math.sin(So),Do=Math.cos(So),Io=.91375164-.03568096*Do,Ro=Math.sqrt(1-Io*Io),_o=.089683511*Uo/Ro,ko=Math.sqrt(1-_o*_o),Oo=5.8351514+.001944368*Lo,Po=.39785416*Uo/Ro,Zo=ko*Do+.91744867*_o*Uo;Po=Math.atan2(Po,Zo),Po+=Oo-So;var Go=Math.cos(Po),Ho=Math.sin(Po);y=.1945905,b=-.98088458,T=.91744867,j=.39785416,q=qo,w=bo,l=29864797e-13;for(var Yo=1/vo,$o=0;$o<2;)eo=-6*(e=y*q+b*T*w)*(d=-jo*(i=-y*w+b*T*q)+Eo*(c=b*j))+Fo*(-24*(p=e*To+(s=Eo*i+jo*c)*wo)*(z=d*To)-6*(g=-e*wo+s*To)*(f=d*wo)),so=-6*(e*(r=-jo*(h=b*w+y*T*q)+Eo*(m=y*j))+(a=-b*q+y*T*w)*d)+Fo*(-24*((x=a*To+(n=Eo*h+jo*m)*wo)*z+p*(v=r*To))+-6*(g*(u=r*wo)+(M=-a*wo+n*To)*f)),ao=-6*a*r+Fo*(-24*x*v-6*M*u),no=6*s*d+Fo*(24*p*f-6*g*z),ro=6*(n*d+s*r)+Fo*(24*(x*f+p*u)-6*(M*z+g*v)),io=6*n*r+Fo*(24*x*u-6*M*v),X=(X=3*(e*e+s*s)+(co=12*p*p-3*g*g)*Fo)+X+Ao*co,oo=(oo=6*(e*a+s*n)+(ho=24*p*x-6*g*M)*Fo)+oo+Ao*ho,to=(to=3*(a*a+n*n)+(mo=12*x*x-3*M*M)*Fo)+to+Ao*mo,J=-.5*(K=l*Yo)/Co,B=-15*yo*(N=K*Co),Q=p*g+x*M,V=x*g+p*M,W=x*M-p*g,1===($o+=1)&&(E=B,F=J,A=K,C=N,L=Q,S=V,U=W,D=X,I=oo,R=to,_=eo,k=so,O=ao,P=no,Z=ro,G=io,H=co,Y=ho,$=mo,y=Go,b=Ho,T=Io,j=Ro,q=ko*qo+_o*bo,w=bo*ko-qo*_o,l=4.7968065e-7);return{snodm:bo,cnodm:qo,sinim:jo,cosim:Eo,sinomm:wo,cosomm:To,day:Lo,e3:2*B*W,ee2:2*B*V,em:yo,emsq:Fo,gam:Oo,peo:0,pgho:0,pho:0,pinco:0,plo:0,rtemsq:Co,se2:2*E*S,se3:2*E*U,sgh2:2*C*Y,sgh3:2*C*($-H),sgh4:-18*C*uo,sh2:-2*F*Z,sh3:-2*F*(G-P),si2:2*F*k,si3:2*F*(O-_),sl2:-2*A*I,sl3:-2*A*(R-D),sl4:-2*A*(-21-9*Fo)*uo,s1:B,s2:J,s3:K,s4:N,s5:Q,s6:V,s7:W,ss1:E,ss2:F,ss3:A,ss4:C,ss5:L,ss6:S,ss7:U,sz1:D,sz2:I,sz3:R,sz11:_,sz12:k,sz13:O,sz21:P,sz22:Z,sz23:G,sz31:H,sz32:Y,sz33:$,xgh2:2*N*ho,xgh3:2*N*(mo-co),xgh4:-18*N*zo,xh2:-2*J*ro,xh3:-2*J*(io-no),xi2:2*J*so,xi3:2*J*(ao-eo),xl2:-2*K*oo,xl3:-2*K*(to-X),xl4:-2*K*(-21-9*Fo)*zo,nm:vo,z1:X,z2:oo,z3:to,z11:eo,z12:so,z13:ao,z21:no,z22:ro,z23:io,z31:co,z32:ho,z33:mo,zmol:(.2299715*Lo-Oo+4.7199672)%t,zmos:(6.2565837+.017201977*Lo)%t}}({epoch:go,ep:e.ecco,argpp:e.argpo,tc:0,inclp:e.inclo,nodep:e.nodeo,np:e.no,e3:e.e3,ee2:e.ee2,peo:e.peo,pgho:e.pgho,pho:e.pho,pinco:e.pinco,plo:e.plo,se2:e.se2,se3:e.se3,sgh2:e.sgh2,sgh3:e.sgh3,sgh4:e.sgh4,sh2:e.sh2,sh3:e.sh3,si2:e.si2,si3:e.si3,sl2:e.sl2,sl3:e.sl3,sl4:e.sl4,xgh2:e.xgh2,xgh3:e.xgh3,xgh4:e.xgh4,xh2:e.xh2,xh3:e.xh3,xi2:e.xi2,xi3:e.xi3,xl2:e.xl2,xl3:e.xl3,xl4:e.xl4,zmol:e.zmol,zmos:e.zmos});e.e3=Ro.e3,e.ee2=Ro.ee2,e.peo=Ro.peo,e.pgho=Ro.pgho,e.pho=Ro.pho,e.pinco=Ro.pinco,e.plo=Ro.plo,e.se2=Ro.se2,e.se3=Ro.se3,e.sgh2=Ro.sgh2,e.sgh3=Ro.sgh3,e.sgh4=Ro.sgh4,e.sh2=Ro.sh2,e.sh3=Ro.sh3,e.si2=Ro.si2,e.si3=Ro.si3,e.sl2=Ro.sl2,e.sl3=Ro.sl3,e.sl4=Ro.sl4,n=Ro.sinim,a=Ro.cosim,b=Ro.em,q=Ro.emsq,S=Ro.s1,U=Ro.s2,D=Ro.s3,I=Ro.s4,R=Ro.s5,k=Ro.ss1,O=Ro.ss2,P=Ro.ss3,Z=Ro.ss4,G=Ro.ss5,H=Ro.sz1,Y=Ro.sz3,$=Ro.sz11,B=Ro.sz13,J=Ro.sz21,K=Ro.sz23,N=Ro.sz31,Q=Ro.sz33,e.xgh2=Ro.xgh2,e.xgh3=Ro.xgh3,e.xgh4=Ro.xgh4,e.xh2=Ro.xh2,e.xh3=Ro.xh3,e.xi2=Ro.xi2,e.xi3=Ro.xi3,e.xl2=Ro.xl2,e.xl3=Ro.xl3,e.xl4=Ro.xl4,e.zmol=Ro.zmol,e.zmos=Ro.zmos,E=Ro.nm,ao=Ro.z1,no=Ro.z3,ro=Ro.z11,io=Ro.z13,co=Ro.z21,ho=Ro.z23,mo=Ro.z31,lo=Ro.z33;var _o=u(e,{inclo:j,init:e.init,ep:e.ecco,inclp:e.inclo,nodep:e.nodeo,argpp:e.argpo,mp:e.mo,opsmode:e.operationmode});e.ecco=_o.ep,e.inclo=_o.inclp,e.nodeo=_o.nodep,e.argpo=_o.argpp,e.mo=_o.mp,0,0,0;var ko=function(e){var s,a,n,d,i,c,h,m,l,p,g,M,f,u,z,v,y,b=e.cosim,q=e.argpo,w=e.s1,T=e.s2,j=e.s3,E=e.s4,F=e.s5,A=e.sinim,C=e.ss1,L=e.ss2,S=e.ss3,U=e.ss4,D=e.ss5,I=e.sz1,R=e.sz3,_=e.sz11,k=e.sz13,O=e.sz21,P=e.sz23,Z=e.sz31,G=e.sz33,H=e.t,Y=e.tc,$=e.gsto,B=e.mo,J=e.mdot,K=e.no,N=e.nodeo,Q=e.nodedot,V=e.xpidot,W=e.z1,X=e.z3,oo=e.z11,to=e.z13,eo=e.z21,so=e.z23,ao=e.z31,no=e.z33,ro=e.ecco,io=e.eccsq,co=e.emsq,ho=e.em,mo=e.argpm,lo=e.inclm,po=e.mm,xo=e.nm,go=e.nodem,Mo=e.irez,fo=e.atime,uo=e.d2201,zo=e.d2211,vo=e.d3210,yo=e.d3222,bo=e.d4410,qo=e.d4422,wo=e.d5220,To=e.d5232,jo=e.d5421,Eo=e.d5433,Fo=e.dedt,Ao=e.didt,Co=e.dmdt,Lo=e.dnodt,So=e.domdt,Uo=e.del1,Do=e.del2,Io=e.del3,Ro=e.xfact,_o=e.xlamo,ko=e.xli,Oo=e.xni,Po=.0043752690880113,Zo=.00015835218,Go=119459e-10;Mo=0,xo<.0052359877&&xo>.0034906585&&(Mo=1),xo>=.00826&&xo<=.00924&&ho>=.5&&(Mo=2);var Ho=-Go*L*(O+P);(lo<.052359877||lo>o-.052359877)&&(Ho=0),0!==A&&(Ho/=A);var Yo=-Zo*T*(eo+so);(lo<.052359877||lo>o-.052359877)&&(Yo=0),So=U*Go*(Z+G-6)-b*Ho+E*Zo*(ao+no-6),Lo=Ho,0!==A&&(So-=b/A*Yo,Lo+=Yo/A);var $o=($+Y*Po)%t;if(ho+=(Fo=C*Go*D+w*Zo*F)*H,lo+=(Ao=L*Go*(_+k)+T*Zo*(oo+to))*H,mo+=So*H,go+=Lo*H,po+=(Co=-Go*S*(I+R-14-6*co)-Zo*j*(W+X-14-6*co))*H,0!==Mo){if(z=Math.pow(xo/r,x),2===Mo){var Bo=ho,Jo=co;y=(ho=ro)*(co=io),ho<=.65?(n=3.616-13.247*ho+16.29*co,d=117.39*ho-19.302-228.419*co+156.591*y,i=109.7927*ho-18.9068-214.6334*co+146.5816*y,c=242.694*ho-41.122-471.094*co+313.953*y,h=841.88*ho-146.407-1629.014*co+1083.435*y,m=3017.977*ho-532.114-5740.032*co+3708.276*y):(n=331.819*ho-72.099-508.738*co+266.724*y,d=1582.851*ho-346.844-2415.925*co+1246.113*y,i=1554.908*ho-342.585-2366.899*co+1215.972*y,c=4758.686*ho-1052.797-7193.992*co+3651.957*y,h=16178.11*ho-3581.69-24462.77*co+12422.52*y,m=ho>.715?29936.92*ho-5149.66-54087.36*co+31324.56*y:1464.74-4664.75*ho+3763.64*co),ho<.7?(g=4988.61*ho-919.2277-9064.77*co+5542.21*y,l=4568.6173*ho-822.71072-8491.4146*co+5337.524*y,p=4690.25*ho-853.666-8624.77*co+5341.4*y):(g=161616.52*ho-37995.78-229838.2*co+109377.94*y,l=218913.95*ho-51752.104-309468.16*co+146349.42*y,p=170470.89*ho-40023.88-242699.48*co+115605.82*y),uo=(f=17891679e-13*(u=xo*xo*3*(z*z)))*(s=.75*(1+2*b+(v=b*b)))*(-.306-.44*(ho-.64)),zo=f*(1.5*(M=A*A))*n,vo=(f=3.7393792e-7*(u*=z))*(1.875*A*(1-2*b-3*v))*d,yo=f*(-1.875*A*(1+2*b-3*v))*i,bo=(f=2*(u*=z)*7.3636953e-9)*(35*M*s)*c,qo=f*(39.375*M*M)*h,wo=(f=1.1428639e-7*(u*=z))*(9.84375*A*(M*(1-2*b-5*v)+.33333333*(4*b-2+6*v)))*m,To=f*(A*(4.92187512*M*(-2-4*b+10*v)+6.56250012*(1+2*b-3*v)))*p,jo=(f=2*u*2.1765803e-9)*(29.53125*A*(2-8*b+v*(8*b-12+10*v)))*l,Eo=f*(29.53125*A*(-2-8*b+v*(12+8*b-10*v)))*g,_o=(B+N+N-($o+$o))%t,Ro=J+Co+2*(Q+Lo-Po)-K,ho=Bo,co=Jo}1===Mo&&(a=1+b,Do=2*(Uo=3*xo*xo*z*z)*(s=.75*(1+b)*(1+b))*(1+co*(.8125*co-2.5))*17891679e-13,Io=3*Uo*(a*=1.875*a*a)*(1+co*(6.60937*co-6))*2.2123015e-7*z,Uo=Uo*(.9375*A*A*(1+3*b)-.75*(1+b))*(d=1+2*co)*21460748e-13*z,_o=(B+N+q-$o)%t,Ro=J+V+Co+So+Lo-(K+Po)),ko=_o,Oo=K,fo=0,xo=K+0}return{em:ho,argpm:mo,inclm:lo,mm:po,nm:xo,nodem:go,irez:Mo,atime:fo,d2201:uo,d2211:zo,d3210:vo,d3222:yo,d4410:bo,d4422:qo,d5220:wo,d5232:To,d5421:jo,d5433:Eo,dedt:Fo,didt:Ao,dmdt:Co,dndt:0,dnodt:Lo,domdt:So,del1:Uo,del2:Do,del3:Io,xfact:Ro,xlamo:_o,xli:ko,xni:Oo}}({cosim:a,emsq:q,argpo:e.argpo,s1:S,s2:U,s3:D,s4:I,s5:R,sinim:n,ss1:k,ss2:O,ss3:P,ss4:Z,ss5:G,sz1:H,sz3:Y,sz11:$,sz13:B,sz21:J,sz23:K,sz31:N,sz33:Q,t:e.t,tc:0,gsto:e.gsto,mo:e.mo,mdot:e.mdot,no:e.no,nodeo:e.nodeo,nodedot:e.nodedot,xpidot:eo,z1:ao,z3:no,z11:ro,z13:io,z21:co,z23:ho,z31:mo,z33:lo,ecco:e.ecco,eccsq:Fo,em:b,argpm:0,inclm:j,mm:0,nm:E,nodem:0,irez:e.irez,atime:e.atime,d2201:e.d2201,d2211:e.d2211,d3210:e.d3210,d3222:e.d3222,d4410:e.d4410,d4422:e.d4422,d5220:e.d5220,d5232:e.d5232,d5421:e.d5421,d5433:e.d5433,dedt:e.dedt,didt:e.didt,dmdt:e.dmdt,dnodt:e.dnodt,domdt:e.domdt,del1:e.del1,del2:e.del2,del3:e.del3,xfact:e.xfact,xlamo:e.xlamo,xli:e.xli,xni:e.xni});e.irez=ko.irez,e.atime=ko.atime,e.d2201=ko.d2201,e.d2211=ko.d2211,e.d3210=ko.d3210,e.d3222=ko.d3222,e.d4410=ko.d4410,e.d4422=ko.d4422,e.d5220=ko.d5220,e.d5232=ko.d5232,e.d5421=ko.d5421,e.d5433=ko.d5433,e.dedt=ko.dedt,e.didt=ko.didt,e.dmdt=ko.dmdt,e.dnodt=ko.dnodt,e.domdt=ko.domdt,e.del1=ko.del1,e.del2=ko.del2,e.del3=ko.del3,e.xfact=ko.xfact,e.xlamo=ko.xlamo,e.xli=ko.xli,e.xni=ko.xni}1!==e.isimp&&(i=e.cc1*e.cc1,e.d2=4*wo*to*i,V=e.d2*to*e.cc1/3,e.d3=(17*wo+_)*V,e.d4=.5*V*wo*to*(221*wo+31*_)*e.cc1,e.t3cof=e.d2+2*i,e.t4cof=.25*(3*e.d3+e.cc1*(12*e.d2+10*i)),e.t5cof=.2*(3*e.d4+12*e.cc1*e.d3+6*e.d2*e.d2+15*i*(2*e.d2+i)))}y(e,0),e.init="n"}function q(o){return function(o){if(Array.isArray(o))return w(o)}(o)||function(o){if("undefined"!=typeof Symbol&&null!=o[Symbol.iterator]||null!=o["@@iterator"])return Array.from(o)}(o)||function(o,t){if(!o)return;if("string"==typeof o)return w(o,t);var e=Object.prototype.toString.call(o).slice(8,-1);"Object"===e&&o.constructor&&(e=o.constructor.name);if("Map"===e||"Set"===e)return Array.from(o);if("Arguments"===e||/^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e))return w(o,t)}(o)||function(){throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.")}()}function w(o,t){(null==t||t>o.length)&&(t=o.length);for(var e=0,s=new Array(t);e<t;e++)s[e]=o[e];return s}function T(o){return o*s}function j(o){return o*e}function E(o){var t=o.longitude,e=o.latitude,s=o.height,a=6378.137,n=(a-6356.7523142)/a,d=2*n-n*n,r=a/Math.sqrt(1-d*(Math.sin(e)*Math.sin(e)));return{x:(r+s)*Math.cos(e)*Math.cos(t),y:(r+s)*Math.cos(e)*Math.sin(t),z:(r*(1-d)+s)*Math.sin(e)}}var F={constants:Object.freeze({__proto__:null,deg2rad:e,earthRadius:d,j2:h,j3:m,j3oj2:p,j4:l,minutesPerDay:a,mu:n,pi:o,rad2deg:s,tumin:c,twoPi:t,vkmpersec:i,x2o3:x,xke:r}),propagate:function(){for(var o=arguments.length,t=new Array(o),e=0;e<o;e++)t[e]=arguments[e];var s=t[0],n=Array.prototype.slice.call(t,1),d=f.apply(void 0,q(n)),r=(d-s.jdsatepoch)*a;return y(s,r)},sgp4:y,twoline2satrec:function(t,s){var a=1440/(2*o),n=0,d={error:0};d.satnum=t.substring(2,7),d.epochyr=parseInt(t.substring(18,20),10),d.epochdays=parseFloat(t.substring(20,32)),d.ndot=parseFloat(t.substring(33,43)),d.nddot=parseFloat(".".concat(parseInt(t.substring(44,50),10),"E").concat(t.substring(50,52))),d.bstar=parseFloat("".concat(t.substring(53,54),".").concat(parseInt(t.substring(54,59),10),"E").concat(t.substring(59,61))),d.inclo=parseFloat(s.substring(8,16)),d.nodeo=parseFloat(s.substring(17,25)),d.ecco=parseFloat(".".concat(s.substring(26,33))),d.argpo=parseFloat(s.substring(34,42)),d.mo=parseFloat(s.substring(43,51)),d.no=parseFloat(s.substring(52,63)),d.no/=a,d.inclo*=e,d.nodeo*=e,d.argpo*=e,d.mo*=e;var r=g(n=d.epochyr<57?d.epochyr+2e3:d.epochyr+1900,d.epochdays),i=r.mon,c=r.day,h=r.hr,m=r.minute,l=r.sec;return d.jdsatepoch=f(n,i,c,h,m,l),b(d,{opsmode:"i",satn:d.satnum,epoch:d.jdsatepoch-2433281.5,xbstar:d.bstar,xecco:d.ecco,xargpo:d.argpo,xinclo:d.inclo,xmo:d.mo,xno:d.no,xnodeo:d.nodeo}),d},gstime:v,jday:f,invjday:function(o,t){var e=o-2415019.5,s=e/365.25,a=1900+Math.floor(s),n=Math.floor(.25*(a-1901)),d=e-(365*(a-1900)+n)+1e-11;d<1&&(d=e-(365*((a-=1)-1900)+(n=Math.floor(.25*(a-1901)))));var r=g(a,d),i=r.mon,c=r.day,h=r.hr,m=r.minute,l=r.sec-864e-9;return t?[a,i,c,h,m,Math.floor(l)]:new Date(Date.UTC(a,i-1,c,h,m,Math.floor(l)))},dopplerFactor:function(o,t,e){var s=7292115e-11,a={x:t.x-o.x,y:t.y-o.y,z:t.z-o.z};a.w=Math.sqrt(Math.pow(a.x,2)+Math.pow(a.y,2)+Math.pow(a.z,2));var n=e.x+s*o.y,d=e.y-s*o.x,r=e.z,i=(a.x*n+a.y*d+a.z*r)/a.w;return 1+i/299792.458*(i>=0?1:-1)},radiansToDegrees:T,degreesToRadians:j,degreesLat:function(t){if(t<-o/2||t>o/2)throw new RangeError("Latitude radians must be in range [-pi/2; pi/2].");return T(t)},degreesLong:function(t){if(t<-o||t>o)throw new RangeError("Longitude radians must be in range [-pi; pi].");return T(t)},radiansLat:function(o){if(o<-90||o>90)throw new RangeError("Latitude degrees must be in range [-90; 90].");return j(o)},radiansLong:function(o){if(o<-180||o>180)throw new RangeError("Longitude degrees must be in range [-180; 180].");return j(o)},geodeticToEcf:E,eciToGeodetic:function(e,s){for(var a=6378.137,n=Math.sqrt(e.x*e.x+e.y*e.y),d=(a-6356.7523142)/a,r=2*d-d*d,i=Math.atan2(e.y,e.x)-s;i<-o;)i+=t;for(;i>o;)i-=t;for(var c,h=0,m=Math.atan2(e.z,Math.sqrt(e.x*e.x+e.y*e.y));h<20;)c=1/Math.sqrt(1-r*(Math.sin(m)*Math.sin(m))),m=Math.atan2(e.z+a*c*r*Math.sin(m),n),h+=1;return{longitude:i,latitude:m,height:n/Math.cos(m)-a*c}},eciToEcf:function(o,t){return{x:o.x*Math.cos(t)+o.y*Math.sin(t),y:o.x*-Math.sin(t)+o.y*Math.cos(t),z:o.z}},ecfToEci:function(o,t){return{x:o.x*Math.cos(t)-o.y*Math.sin(t),y:o.x*Math.sin(t)+o.y*Math.cos(t),z:o.z}},ecfToLookAngles:function(t,e){var s,a,n,d,r,i,c=function(o,t){var e=o.longitude,s=o.latitude,a=E(o),n=t.x-a.x,d=t.y-a.y,r=t.z-a.z;return{topS:Math.sin(s)*Math.cos(e)*n+Math.sin(s)*Math.sin(e)*d-Math.cos(s)*r,topE:-Math.sin(e)*n+Math.cos(e)*d,topZ:Math.cos(s)*Math.cos(e)*n+Math.cos(s)*Math.sin(e)*d+Math.sin(s)*r}}(t,e);return a=(s=c).topS,n=s.topE,d=s.topZ,r=Math.sqrt(a*a+n*n+d*d),i=Math.asin(d/r),{azimuth:Math.atan2(-n,a)+o,elevation:i,rangeSat:r}}};return F}));
+
+// ===== Спутники: орбиты (TLE) → место на небе, освещённость, яркость, пролёты =====
+// Орбиту описывают две строки цифр (TLE). Модель SGP4 из satellite.js по ним говорит, где спутник
+// в любой момент. Дальше всё как у звёзд: азимут и высота над горизонтом.
+// Глазом спутник виден, только когда он сам на солнце, а у наблюдателя уже темно («зеркальце на солнце»).
+
+const EARTH_R = 6378.137;                 // км, экваториальный радиус: граница тени Земли
+const TWILIGHT_DARK = -6;                 // Солнце ниже −6°: небо достаточно тёмное, чтобы заметить спутник
+const PASS_MIN_ALT = 10;                  // ниже 10° пролёт теряется в дымке и за домами
+
+// Свои имена и «стандартная яркость»: звёздная величина на расстоянии 1000 км при половинном освещении
+const SAT_INFO = {
+  '25544': { name: 'МКС', kind: 'Космическая станция', std: -1.8, featured: true,
+    blurb: 'Международная космическая станция: размером с футбольное поле, летит на высоте ~420 км со скоростью 28 000 км/ч и облетает Землю за полтора часа. На борту обычно 7 человек. Ярче неё ночью бывают только Луна и Венера.' },
+  '48274': { name: 'Тяньгун', kind: 'Китайская станция', std: -0.8, featured: true,
+    blurb: 'Китайская станция «Небесный дворец». Меньше МКС, летит чуть ниже (~390 км), но тоже хорошо видна глазом. Орбита наклонена на 41,5°, поэтому из Израиля пролёты бывают часто.' },
+  '20580': { name: 'Хаббл', kind: 'Космический телескоп', std: 2.2, featured: true,
+    blurb: 'Телескоп размером с автобус на высоте ~520 км, работает с 1990 года. Орбита наклонена всего на 28,5°, поэтому из северных широт он виден только низко на юге. Глазом заметен как ровная звёздочка средней яркости.' },
+};
+const SAT_BLURB = {
+  rocket: 'Отработавшая верхняя ступень ракеты: пустой бак размером с автобус. Именно такие «бочки» дают большую часть ярких спутников в списке: они крупные и хорошо отражают свет.',
+  debris: 'Обломок: кусок старого спутника или ракеты. Их на орбите десятки тысяч, видны глазом единицы.',
+  starlink: 'Спутник интернета Starlink, плоская панель размером с кухонный стол на высоте ~550 км. Их больше 8 000. Сразу после запуска летят цепочкой («поезд»), потом расходятся по своим орбитам.',
+  generic: 'Спутник сам не светится: это зеркальце на солнце. Его видно в сумерках и первые часы ночи: у тебя уже темно, а на высоте сотен километров ещё светит Солнце. Ближе к полуночи большинство спутников ныряют в тень Земли и гаснут.',
+};
+
+const TLE_GROUPS = {
+  visual: { local: 'data/visual.tle', remote: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle' },
+  stations: { local: 'data/stations.tle', remote: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle' },
+  starlink: { local: 'data/starlink.tle', remote: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle' },
+};
+const TLE_MAX_AGE = 3 * 3600e3;           // свежий кэш не перезапрашиваем: CelesTrak просит не дёргать чаще
+
+function satKind(name) {
+  if (/STARLINK/i.test(name)) return 'starlink';
+  if (/R\/B|ROCKET/i.test(name)) return 'rocket';
+  if (/DEB/i.test(name)) return 'debris';
+  return 'generic';
+}
+
+// Текст TLE → записи с готовой орбитой. Строка имени необязательна.
+function parseTle(text, group) {
+  const lines = text.split(/\r?\n/).map(s => s.trimEnd()).filter(Boolean), out = [];
+  for (let i = 0; i < lines.length - 1; i++) {
+    const l1 = lines[i], l2 = lines[i + 1];
+    if (!l1.startsWith('1 ') || !l2.startsWith('2 ')) continue;
+    const id = l1.slice(2, 7).trim();
+    const prev = i > 0 ? lines[i - 1] : '';
+    const raw = prev && !/^[12] /.test(prev) ? prev.trim() : 'NORAD ' + id;
+    const satrec = satellite.twoline2satrec(l1, l2);
+    i++;
+    if (satrec.error) continue;
+    const info = SAT_INFO[id] || {};
+    const kind = satKind(raw);
+    out.push({
+      id, raw, group, satrec, kind,
+      name: info.name || raw,
+      std: info.std != null ? info.std : kind === 'starlink' ? 5 : 4,
+      featured: !!info.featured,
+      epochMs: (satrec.jdsatepoch - 2440587.5) * 86400e3,
+    });
+  }
+  return out;
+}
+
+// Скачать группу: сначала копия на нашем сайте (её раз в 6 часов кладёт GitHub Actions),
+// потом напрямую CelesTrak, а если сети нет — что лежит в кэше, даже несвежее.
+async function loadTleGroup(group, opts = {}) {
+  const key = 'skyradar.tle.' + group, src = TLE_GROUPS[group];
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) { /* нет хранилища */ }
+  if (cached && !opts.force && Date.now() - cached.t < TLE_MAX_AGE) return cached;
+  for (const url of [src.local, src.remote]) {
+    try {
+      const res = await fetch(url, { cache: 'no-cache' });
+      if (!res.ok) continue;
+      const text = await res.text();
+      if (!/^1 /m.test(text)) continue;              // вместо орбит пришла ошибка
+      const rec = { t: Date.now(), text, source: url === src.local ? 'site' : 'celestrak' };
+      try { localStorage.setItem(key, JSON.stringify(rec)); } catch (e) { /* переполнено — живём без кэша */ }
+      return rec;
+    } catch (e) { /* пробуем следующий источник */ }
+  }
+  if (cached) return { ...cached, stale: true };
+  throw new Error('Не удалось загрузить орбиты (' + group + ')');
+}
+
+// Склеить группы, убрав повторы (МКС есть и в «ярких», и в «станциях»)
+function mergeSats(...lists) {
+  const seen = new Map();
+  for (const l of lists) for (const s of l) if (!seen.has(s.id)) seen.set(s.id, s);
+  return [...seen.values()];
+}
+
+// Всё, что не зависит от конкретного спутника: Солнце, вращение Земли, где стоит наблюдатель
+function satFrame(ms, lat, lon) {
+  const date = new Date(ms), gmst = satellite.gstime(date);
+  const obs = { latitude: lat * D2R, longitude: lon * D2R, height: 0.05 };
+  const sun = sunPosition(julianDate(ms));
+  const sunU = [cosd(sun.dec) * cosd(sun.ra), cosd(sun.dec) * sind(sun.ra), sind(sun.dec)];
+  return { ms, date, gmst, obs, sunU, obsEci: satellite.ecfToEci(satellite.geodeticToEcf(obs), gmst),
+    sunAlt: sunAltAt(ms, lat, lon) };
+}
+
+// Звёздная величина: дальше — тусклее; «полная фаза» (солнце за спиной у тебя) — ярче
+function satMag(std, rangeKm, phaseDeg) {
+  const ph = phaseDeg * D2R;
+  const f = (Math.sin(ph) + (Math.PI - ph) * Math.cos(ph)) / Math.PI;     // доля света от шара
+  return std + 5 * Math.log10(rangeKm / 1000) - 2.5 * Math.log10(Math.max(f * Math.PI, 1e-3));
+}
+
+// Где спутник для наблюдателя в момент frame.ms
+function satLook(s, f) {
+  const pv = satellite.propagate(s.satrec, f.date);
+  if (!pv || !pv.position) return null;              // орбита «развалилась»: слишком старые данные
+  const r = pv.position;
+  const look = satellite.ecfToLookAngles(f.obs, satellite.eciToEcf(r, f.gmst));
+  let alt = look.elevation * R2D;
+  alt += refraction(alt);
+  // Тень Земли — цилиндр за планетой: спутник в тени, если он «за» Землёй и ближе к оси, чем её радиус
+  const dot = r.x * f.sunU[0] + r.y * f.sunU[1] + r.z * f.sunU[2];
+  const perp = Math.hypot(r.x - dot * f.sunU[0], r.y - dot * f.sunU[1], r.z - dot * f.sunU[2]);
+  const sunlit = dot > 0 || perp > EARTH_R;
+  const visible = sunlit && alt > 0 && f.sunAlt < TWILIGHT_DARK;
+  let mag = null;
+  if (sunlit) {
+    const to = [f.obsEci.x - r.x, f.obsEci.y - r.y, f.obsEci.z - r.z], d = Math.hypot(...to);
+    const phase = Math.acos(Math.max(-1, Math.min(1, (to[0] * f.sunU[0] + to[1] * f.sunU[1] + to[2] * f.sunU[2]) / d))) * R2D;
+    mag = satMag(s.std, look.rangeSat, phase);
+  }
+  return {
+    alt, az: rev(look.azimuth * R2D), range: look.rangeSat, sunlit, visible, mag,
+    height: Math.hypot(r.x, r.y, r.z) - EARTH_R,
+    speed: Math.hypot(pv.velocity.x, pv.velocity.y, pv.velocity.z),
+  };
+}
+
+// Положения всех спутников над горизонтом
+function satSky(sats, ms, lat, lon) {
+  const f = satFrame(ms, lat, lon), out = [];
+  for (const s of sats) {
+    const l = satLook(s, f);
+    if (l && l.alt > 0) out.push({ sat: s, ...l });
+  }
+  return out;
+}
+
+// След на небе: где спутник был и где будет (для МКС и других главных)
+function satTrack(s, ms, lat, lon, fromMin = -3, toMin = 6, stepSec = 20) {
+  const pts = [];
+  for (let t = ms + fromMin * 60e3; t <= ms + toMin * 60e3; t += stepSec * 1000) {
+    const l = satLook(s, satFrame(t, lat, lon));
+    if (l) pts.push({ ms: t, ...l });
+  }
+  return pts;
+}
+
+// Только высота, без Солнца: дёшево, для грубого поиска
+function satAltOnly(s, ms, obs) {
+  const d = new Date(ms), pv = satellite.propagate(s.satrec, d);
+  if (!pv || !pv.position) return null;
+  return satellite.ecfToLookAngles(obs, satellite.eciToEcf(pv.position, satellite.gstime(d))).elevation * R2D;
+}
+
+// Видимые пролёты: отрезки, где спутник выше 10°, освещён, а у тебя темно.
+// Раз в минуту смотрим, не поднялся ли спутник над горизонтом; если да — разбираем этот кусок подробно.
+function satPasses(s, fromMs, hours, lat, lon, stepSec = 10) {
+  const out = [], toMs = fromMs + hours * 3600e3, coarse = 60e3;
+  const obs = { latitude: lat * D2R, longitude: lon * D2R, height: 0.05 };
+  for (let t = fromMs; t <= toMs; t += coarse) {
+    const a = satAltOnly(s, t, obs);
+    if (a === null || a <= 0) continue;
+    // над горизонтом: идём мелким шагом от минуты назад, пока не зайдёт
+    let cur = null, prev = null, u = Math.max(fromMs, t - coarse);
+    const close = reason => { cur.endsInShadow = reason === 'shadow'; out.push(cur); cur = null; };
+    for (; u <= toMs; u += stepSec * 1000) {
+      const l = satLook(s, satFrame(u, lat, lon));
+      if (!l) break;
+      const ok = l.visible && l.alt >= PASS_MIN_ALT;
+      if (ok && !cur) {
+        cur = { sat: s, start: { ms: u, ...l }, max: { ms: u, ...l }, end: null, mag: l.mag,
+          fromShadow: !!(prev && prev.alt >= PASS_MIN_ALT && !prev.sunlit) };
+      }
+      if (ok) {
+        if (l.alt > cur.max.alt) cur.max = { ms: u, ...l };
+        if (l.mag < cur.mag) cur.mag = l.mag;
+        cur.end = { ms: u, ...l };
+      } else if (cur) {
+        close(l.alt >= PASS_MIN_ALT && !l.sunlit ? 'shadow' : 'set');
+      }
+      if (l.alt < 0 && u > t) break;
+      prev = l;
+    }
+    if (cur) close('cut');
+    t = u;                                           // дальше грубый поиск с места захода
+  }
+  return out;
+}
+
 // ===== «Глаза» и интерфейс: купол неба, перемотка времени, карточки =====
 (function () {
   const PLACES = [
@@ -556,6 +781,12 @@ if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES
     selected: null,     // { kind, key }
     snap: null,
     hits: [],
+    sats: [],           // МКС, Тяньгун, Хаббл и ~150 самых ярких спутников
+    starlink: [],       // грузим, только если включили
+    satView: [],        // кто сейчас над горизонтом
+    passes: [],
+    tle: null,          // когда и откуда пришли орбиты
+    satOpts: { bright: store.get('satBright') !== false, starlink: store.get('satStarlink') === true },
   };
 
   const fmt = (x, d = 0) => x.toLocaleString('ru-RU', { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -678,6 +909,8 @@ if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES
       hits.push({ x, y, key: 's:' + s.n, obj: s, kind: 'star' });
     }
 
+    drawSats(sunAlt, hits);
+
     // планеты
     ctx.font = `600 ${Math.max(10, size * 0.021)}px "Golos Text", sans-serif`;
     for (const pl of snap.planets) {
@@ -731,6 +964,55 @@ if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES
     if (state.selected) fillCard();
   }
 
+  // ---------- спутники ----------
+  const SAT_LIT = '#8ef0c4', SAT_DARK = 'rgba(150,165,190,0.55)';
+  function drawSats(sunAlt, hits) {
+    const p = state.place, t = nowMs();
+    const pool = state.satOpts.bright ? state.sats : state.sats.filter(s => s.featured);
+    // в ускоренном режиме тысячи Starlink не успевают пересчитываться — прячем их
+    const withStarlink = state.satOpts.starlink && !state.playing ? pool.concat(state.starlink) : pool;
+    const view = state.satView = satSky(withStarlink, t, p.lat, p.lon);
+    const selKey = state.selected && state.selected.key;
+
+    for (const v of view) {
+      const s = v.sat, key = 'sat:' + s.id;
+      if (s.featured) continue;                        // их рисуем ниже, со следом
+      const [x, y] = project(v.alt, v.az);
+      const small = s.kind === 'starlink';
+      ctx.fillStyle = v.visible ? SAT_LIT : SAT_DARK;
+      ctx.globalAlpha = small ? (v.visible ? 0.85 : 0.35) : 1;
+      ctx.beginPath(); ctx.arc(x, y, small ? 1.1 : 1.9, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      if (key === selKey) { ctx.font = `${Math.max(9, size * 0.019)}px "Golos Text", sans-serif`; ctx.fillText(s.name, x + 6, y); }
+      hits.push({ x, y, key, obj: v, kind: 'sat' });
+    }
+
+    // МКС, Тяньгун, Хаббл: путь на ближайшие минуты, яркий там, где спутник на солнце
+    for (const s of state.sats.filter(x => x.featured)) {
+      const track = satTrack(s, t, p.lat, p.lon);
+      ctx.lineWidth = 1.6;
+      for (let i = 1; i < track.length; i++) {
+        const a = track[i - 1], b = track[i];
+        if (a.alt < 0 && b.alt < 0) continue;
+        const [x1, y1] = project(Math.max(a.alt, 0), a.az), [x2, y2] = project(Math.max(b.alt, 0), b.az);
+        ctx.strokeStyle = b.visible ? 'rgba(142,240,196,0.75)' : 'rgba(150,165,190,0.45)';
+        ctx.setLineDash(b.ms <= t ? [2, 3] : []);       // пунктир — где уже пролетел
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      const v = view.find(x => x.sat === s);
+      if (!v) continue;
+      const [x, y] = project(v.alt, v.az);
+      ctx.fillStyle = v.visible ? SAT_LIT : '#aab4c8';
+      ctx.beginPath(); ctx.arc(x, y, Math.max(3.2, size * 0.0065), 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = v.visible ? 'rgba(142,240,196,0.45)' : 'rgba(170,180,200,0.35)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x, y, Math.max(3.2, size * 0.0065) + 3.5, 0, Math.PI * 2); ctx.stroke();
+      ctx.font = `600 ${Math.max(10, size * 0.021)}px "Golos Text", sans-serif`;
+      ctx.fillText(s.name, x + 10, y);
+      hits.push({ x, y, key: 'sat:' + s.id, obj: v, kind: 'sat' });
+    }
+  }
+
   function drawMoon(x, y, r, moon, sunAngle) {
     ctx.save(); ctx.translate(x, y); ctx.rotate(sunAngle);
     ctx.fillStyle = '#2b2f3a'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
@@ -751,6 +1033,12 @@ if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES
     if (sel.key === 'moon') return { kind: 'moon', obj: s.moon };
     if (sel.key.startsWith('p:')) return { kind: 'planet', obj: s.planets.find(p => 'p:' + p.id === sel.key) };
     if (sel.key.startsWith('s:')) return { kind: 'star', obj: s.stars.find(t => 's:' + t.n === sel.key) };
+    if (sel.key.startsWith('sat:')) {
+      const id = sel.key.slice(4), sat = state.sats.find(x => x.id === id) || state.starlink.find(x => x.id === id);
+      if (!sat) return null;
+      const l = satLook(sat, satFrame(nowMs(), state.place.lat, state.place.lon));
+      return { kind: 'sat', obj: l && { ...l, sat, name: sat.name } };
+    }
     return null;
   }
   function lightTime(sec) {
@@ -762,7 +1050,7 @@ if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES
     const f = findSelected(); if (!f || !f.obj) return;
     const o = f.obj, card = $('#card');
     const where = o.alt >= 0
-      ? `Высота ${fmt(o.alt)}°, ${rumbWord(o.az)} (азимут ${fmt(o.az)}°)`
+      ? f.kind === 'sat' ? `${fmt(o.alt)}° над горизонтом, ${rumbWord(o.az)} (азимут ${fmt(o.az)}°)` : `Высота ${fmt(o.alt)}°, ${rumbWord(o.az)} (азимут ${fmt(o.az)}°)`
       : `Сейчас под горизонтом (${fmt(o.alt)}°)`;
     let kind = '', facts = [], text = '';
     if (f.kind === 'sun') {
@@ -778,6 +1066,21 @@ if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES
         ['Расстояние', o.distAU * 149.6 >= 1000 ? `${fmt(o.distAU * 0.1496, 2)} млрд км` : `${fmt(o.distAU * 149.6)} млн км`],
         ['Свет идёт', lightTime(o.distAU * 499)], ['От Солнца на небе', `${fmt(o.elong)}°`]);
       if (o.elong < 15) text += ' Сейчас она слишком близко к Солнцу и тонет в его лучах.';
+    } else if (f.kind === 'sat') {
+      const s = o.sat, info = SAT_INFO[s.id];
+      kind = info ? info.kind : { starlink: 'Спутник Starlink', rocket: 'Ступень ракеты', debris: 'Обломок', generic: 'Спутник' }[s.kind];
+      text = info ? info.blurb : SAT_BLURB[s.kind];
+      const dark = state.snap.sun.alt < -6;
+      const light = !o.sunlit ? 'в тени Земли: не светится, глазом не видно'
+        : dark ? 'на солнце, а у тебя темно — виден глазом' : 'на солнце, но у тебя слишком светло';
+      facts.push(['Сейчас', light]);
+      if (o.sunlit && o.alt > 0) facts.push(['Яркость', `≈ ${fmt(o.mag, 1)}`]);
+      facts.push(['Высота орбиты', `${fmt(o.height)} км`], ['До тебя', `${fmt(o.range)} км`],
+        ['Скорость', `${fmt(o.speed * 3600)} км/ч, виток за ${fmt(2 * Math.PI / s.satrec.no)} мин`]);
+      const next = state.passes.find(x => x.sat.id === s.id && x.end.ms > nowMs());
+      if (s.featured) facts.push(['Видимый пролёт', next ? passWhen(next) : 'в ближайшие сутки нет']);
+      const ageH = (Date.now() - s.epochMs) / 3600e3;
+      facts.push(['Данные орбиты', ageH < 48 ? `${fmt(ageH)} ч назад` : `${fmt(ageH / 24)} дн. назад`]);
     } else {
       kind = `Звезда · ${o.c}`;
       const year = new Date().getFullYear() - Math.round(o.ly);
@@ -900,6 +1203,7 @@ if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES
     if (s.moon.alt > 0) all.push({ key: 'moon', name: 'Луна', mag: s.moon.mag, alt: s.moon.alt, az: s.moon.az });
     s.planets.forEach(p => { if (p.alt > 3 && p.elong > 12) all.push({ key: 'p:' + p.id, name: p.name, mag: p.mag, alt: p.alt, az: p.az }); });
     s.stars.forEach(t => { if (t.alt > 5) all.push({ key: 's:' + t.n, name: t.n, mag: t.m, alt: t.alt, az: t.az }); });
+    state.satView.forEach(v => { if (v.sat.featured && v.visible) all.push({ key: 'sat:' + v.sat.id, name: v.sat.name, mag: v.mag, alt: v.alt, az: v.az }); });
     all.sort((a, b) => a.mag - b.mag);
     $('#nowTitle').textContent = state.offsetMin === 0 ? 'Самое яркое сейчас' : `Самое яркое в ${hhmm(nowMs())}`;
     $('#nowList').innerHTML = all.slice(0, 8).map(o => `
@@ -910,6 +1214,11 @@ if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES
 
   document.addEventListener('click', e => {
     const b = e.target.closest('button.row'); if (!b) return;
+    if (b.dataset.jump) {
+      stopPlay();
+      state.offsetMin = Math.round((+b.dataset.jump - Date.now()) / 60000);
+      range.value = state.offsetMin;
+    }
     select(b.dataset.key);
     box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
@@ -943,7 +1252,78 @@ if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES
       { timeout: 8000 });
   });
 
-  function refreshPanel() { const win = updateToday(); updateTonight(win); updateNowList(); }
+  // ---------- спутники: загрузка орбит и пролёты ----------
+  const dayWord = ms => {
+    const d = new Date(ms), today = new Date(), tm = new Date(Date.now() + 86400e3);
+    return d.toDateString() === today.toDateString() ? 'сегодня' : d.toDateString() === tm.toDateString() ? 'завтра' : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  };
+  const DIR8 = ['север', 'северо-восток', 'восток', 'юго-восток', 'юг', 'юго-запад', 'запад', 'северо-запад'];
+  const dir8 = az => DIR8[Math.floor(((az % 360) + 382.5) / 45) % 8];
+  const passWhen = ps => `${dayWord(ps.start.ms)} ${hhmm(ps.start.ms)}–${hhmm(ps.end.ms)}`;
+
+  function updatePasses() {
+    const p = state.place, from = Date.now() - 15 * 60000;
+    if (!state.sats.length) return;
+    state.passes = state.sats.filter(s => s.featured)
+      .flatMap(s => satPasses(s, from, 24, p.lat, p.lon))
+      .filter(x => x.end.ms > Date.now())
+      .sort((a, b) => a.start.ms - b.start.ms);
+    $('#passes').innerHTML = state.passes.length ? state.passes.map(ps => {
+      const s = ps.sat;
+      let line = `${passWhen(ps)}. Выше всего ${fmt(ps.max.alt)}° на ${dir8(ps.max.az)}е. `
+        + `${ps.fromShadow ? 'Вынырнет из тени' : 'Появится'} на ${dir8(ps.start.az)}е, `;
+      line += ps.endsInShadow ? `погаснет на ${dir8(ps.end.az)}е: войдёт в тень Земли.` : `уйдёт на ${dir8(ps.end.az)}.`;
+      return `<li><button class="row" data-key="sat:${s.id}" data-jump="${ps.max.ms}">
+        <span class="row-name">${s.name}<span class="mag">${fmt(ps.mag, 1)}</span></span>
+        <span class="row-line">${line}</span></button></li>`;
+    }).join('') : '<li class="note">В ближайшие сутки видимых пролётов нет: спутники проходят днём или в тени Земли.</li>';
+    if (state.selected) fillCard();
+  }
+
+  function satStatus() {
+    const tle = state.tle; if (!tle) return;
+    const ageMin = Math.round((Date.now() - tle.t) / 60000);
+    const age = ageMin < 60 ? `${ageMin} мин назад` : ageMin < 2880 ? `${Math.round(ageMin / 60)} ч назад` : `${Math.round(ageMin / 1440)} дн. назад`;
+    let line = `Орбиты: CelesTrak, загружены ${age}. Спутников: ${fmt(state.sats.length)}`;
+    if (state.starlink.length) line += ` + ${fmt(state.starlink.length)} Starlink`;
+    line += '.';
+    if (tle.stale) line += ' Сеть недоступна, показываю сохранённые орбиты.';
+    if (ageMin > 3 * 1440) line += ' Данные старые: спутник может оказаться в стороне от метки.';
+    $('#satStatus').textContent = line;
+  }
+
+  async function loadSats() {
+    try {
+      const [vis, st] = await Promise.all([loadTleGroup('visual'), loadTleGroup('stations')]);
+      // из «станций» берём только сами станции: пристыкованные корабли летят там же
+      state.sats = mergeSats(parseTle(st.text, 'stations').filter(s => SAT_INFO[s.id]), parseTle(vis.text, 'visual'));
+      state.tle = vis;
+      satStatus(); render(); updatePasses(); updateNowList();
+    } catch (e) {
+      $('#passes').innerHTML = '<li class="note">Не получилось загрузить орбиты спутников. Нет сети? Попробую ещё раз через минуту.</li>';
+      setTimeout(loadSats, 60000);
+    }
+  }
+  async function loadStarlink() {
+    $('#satStatus').textContent = 'Загружаю Starlink: это несколько тысяч орбит…';
+    try {
+      state.starlink = parseTle((await loadTleGroup('starlink')).text, 'starlink');
+    } catch (e) {
+      state.starlink = [];
+      $('#satStatus').textContent = 'Starlink не загрузился. Попробуй позже.';
+      return;
+    }
+    satStatus(); render();
+  }
+  $('#tgBright').checked = state.satOpts.bright;
+  $('#tgStarlink').checked = state.satOpts.starlink;
+  $('#tgBright').addEventListener('change', e => { state.satOpts.bright = e.target.checked; store.set('satBright', e.target.checked); render(); });
+  $('#tgStarlink').addEventListener('change', e => {
+    state.satOpts.starlink = e.target.checked; store.set('satStarlink', e.target.checked);
+    if (e.target.checked && !state.starlink.length) loadStarlink(); else render();
+  });
+
+  function refreshPanel() { const win = updateToday(); updateTonight(win); updateNowList(); updatePasses(); satStatus(); }
 
   // ---------- старт ----------
   new ResizeObserver(() => resize()).observe(box);
@@ -951,6 +1331,9 @@ if (typeof module !== 'undefined') module.exports = { STARS, CONSTELLATION_LINES
   setInterval(() => { if (!state.playing) { render(); } }, 1000);
   setInterval(() => { if (!state.playing) updateNowList(); }, 15000);
   setInterval(refreshPanel, 10 * 60000);
+  loadSats();
+  if (state.satOpts.starlink) loadStarlink();
+  setInterval(loadSats, 3 * 3600e3);                   // свежие орбиты раз в 3 часа
 })();
 
 </script>

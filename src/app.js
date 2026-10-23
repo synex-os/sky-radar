@@ -32,6 +32,12 @@
     selected: null,     // { kind, key }
     snap: null,
     hits: [],
+    sats: [],           // МКС, Тяньгун, Хаббл и ~150 самых ярких спутников
+    starlink: [],       // грузим, только если включили
+    satView: [],        // кто сейчас над горизонтом
+    passes: [],
+    tle: null,          // когда и откуда пришли орбиты
+    satOpts: { bright: store.get('satBright') !== false, starlink: store.get('satStarlink') === true },
   };
 
   const fmt = (x, d = 0) => x.toLocaleString('ru-RU', { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -154,6 +160,8 @@
       hits.push({ x, y, key: 's:' + s.n, obj: s, kind: 'star' });
     }
 
+    drawSats(sunAlt, hits);
+
     // планеты
     ctx.font = `600 ${Math.max(10, size * 0.021)}px "Golos Text", sans-serif`;
     for (const pl of snap.planets) {
@@ -207,6 +215,55 @@
     if (state.selected) fillCard();
   }
 
+  // ---------- спутники ----------
+  const SAT_LIT = '#8ef0c4', SAT_DARK = 'rgba(150,165,190,0.55)';
+  function drawSats(sunAlt, hits) {
+    const p = state.place, t = nowMs();
+    const pool = state.satOpts.bright ? state.sats : state.sats.filter(s => s.featured);
+    // в ускоренном режиме тысячи Starlink не успевают пересчитываться — прячем их
+    const withStarlink = state.satOpts.starlink && !state.playing ? pool.concat(state.starlink) : pool;
+    const view = state.satView = satSky(withStarlink, t, p.lat, p.lon);
+    const selKey = state.selected && state.selected.key;
+
+    for (const v of view) {
+      const s = v.sat, key = 'sat:' + s.id;
+      if (s.featured) continue;                        // их рисуем ниже, со следом
+      const [x, y] = project(v.alt, v.az);
+      const small = s.kind === 'starlink';
+      ctx.fillStyle = v.visible ? SAT_LIT : SAT_DARK;
+      ctx.globalAlpha = small ? (v.visible ? 0.85 : 0.35) : 1;
+      ctx.beginPath(); ctx.arc(x, y, small ? 1.1 : 1.9, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      if (key === selKey) { ctx.font = `${Math.max(9, size * 0.019)}px "Golos Text", sans-serif`; ctx.fillText(s.name, x + 6, y); }
+      hits.push({ x, y, key, obj: v, kind: 'sat' });
+    }
+
+    // МКС, Тяньгун, Хаббл: путь на ближайшие минуты, яркий там, где спутник на солнце
+    for (const s of state.sats.filter(x => x.featured)) {
+      const track = satTrack(s, t, p.lat, p.lon);
+      ctx.lineWidth = 1.6;
+      for (let i = 1; i < track.length; i++) {
+        const a = track[i - 1], b = track[i];
+        if (a.alt < 0 && b.alt < 0) continue;
+        const [x1, y1] = project(Math.max(a.alt, 0), a.az), [x2, y2] = project(Math.max(b.alt, 0), b.az);
+        ctx.strokeStyle = b.visible ? 'rgba(142,240,196,0.75)' : 'rgba(150,165,190,0.45)';
+        ctx.setLineDash(b.ms <= t ? [2, 3] : []);       // пунктир — где уже пролетел
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      const v = view.find(x => x.sat === s);
+      if (!v) continue;
+      const [x, y] = project(v.alt, v.az);
+      ctx.fillStyle = v.visible ? SAT_LIT : '#aab4c8';
+      ctx.beginPath(); ctx.arc(x, y, Math.max(3.2, size * 0.0065), 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = v.visible ? 'rgba(142,240,196,0.45)' : 'rgba(170,180,200,0.35)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x, y, Math.max(3.2, size * 0.0065) + 3.5, 0, Math.PI * 2); ctx.stroke();
+      ctx.font = `600 ${Math.max(10, size * 0.021)}px "Golos Text", sans-serif`;
+      ctx.fillText(s.name, x + 10, y);
+      hits.push({ x, y, key: 'sat:' + s.id, obj: v, kind: 'sat' });
+    }
+  }
+
   function drawMoon(x, y, r, moon, sunAngle) {
     ctx.save(); ctx.translate(x, y); ctx.rotate(sunAngle);
     ctx.fillStyle = '#2b2f3a'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
@@ -227,6 +284,12 @@
     if (sel.key === 'moon') return { kind: 'moon', obj: s.moon };
     if (sel.key.startsWith('p:')) return { kind: 'planet', obj: s.planets.find(p => 'p:' + p.id === sel.key) };
     if (sel.key.startsWith('s:')) return { kind: 'star', obj: s.stars.find(t => 's:' + t.n === sel.key) };
+    if (sel.key.startsWith('sat:')) {
+      const id = sel.key.slice(4), sat = state.sats.find(x => x.id === id) || state.starlink.find(x => x.id === id);
+      if (!sat) return null;
+      const l = satLook(sat, satFrame(nowMs(), state.place.lat, state.place.lon));
+      return { kind: 'sat', obj: l && { ...l, sat, name: sat.name } };
+    }
     return null;
   }
   function lightTime(sec) {
@@ -238,7 +301,7 @@
     const f = findSelected(); if (!f || !f.obj) return;
     const o = f.obj, card = $('#card');
     const where = o.alt >= 0
-      ? `Высота ${fmt(o.alt)}°, ${rumbWord(o.az)} (азимут ${fmt(o.az)}°)`
+      ? f.kind === 'sat' ? `${fmt(o.alt)}° над горизонтом, ${rumbWord(o.az)} (азимут ${fmt(o.az)}°)` : `Высота ${fmt(o.alt)}°, ${rumbWord(o.az)} (азимут ${fmt(o.az)}°)`
       : `Сейчас под горизонтом (${fmt(o.alt)}°)`;
     let kind = '', facts = [], text = '';
     if (f.kind === 'sun') {
@@ -254,6 +317,21 @@
         ['Расстояние', o.distAU * 149.6 >= 1000 ? `${fmt(o.distAU * 0.1496, 2)} млрд км` : `${fmt(o.distAU * 149.6)} млн км`],
         ['Свет идёт', lightTime(o.distAU * 499)], ['От Солнца на небе', `${fmt(o.elong)}°`]);
       if (o.elong < 15) text += ' Сейчас она слишком близко к Солнцу и тонет в его лучах.';
+    } else if (f.kind === 'sat') {
+      const s = o.sat, info = SAT_INFO[s.id];
+      kind = info ? info.kind : { starlink: 'Спутник Starlink', rocket: 'Ступень ракеты', debris: 'Обломок', generic: 'Спутник' }[s.kind];
+      text = info ? info.blurb : SAT_BLURB[s.kind];
+      const dark = state.snap.sun.alt < -6;
+      const light = !o.sunlit ? 'в тени Земли: не светится, глазом не видно'
+        : dark ? 'на солнце, а у тебя темно — виден глазом' : 'на солнце, но у тебя слишком светло';
+      facts.push(['Сейчас', light]);
+      if (o.sunlit && o.alt > 0) facts.push(['Яркость', `≈ ${fmt(o.mag, 1)}`]);
+      facts.push(['Высота орбиты', `${fmt(o.height)} км`], ['До тебя', `${fmt(o.range)} км`],
+        ['Скорость', `${fmt(o.speed * 3600)} км/ч, виток за ${fmt(2 * Math.PI / s.satrec.no)} мин`]);
+      const next = state.passes.find(x => x.sat.id === s.id && x.end.ms > nowMs());
+      if (s.featured) facts.push(['Видимый пролёт', next ? passWhen(next) : 'в ближайшие сутки нет']);
+      const ageH = (Date.now() - s.epochMs) / 3600e3;
+      facts.push(['Данные орбиты', ageH < 48 ? `${fmt(ageH)} ч назад` : `${fmt(ageH / 24)} дн. назад`]);
     } else {
       kind = `Звезда · ${o.c}`;
       const year = new Date().getFullYear() - Math.round(o.ly);
@@ -376,6 +454,7 @@
     if (s.moon.alt > 0) all.push({ key: 'moon', name: 'Луна', mag: s.moon.mag, alt: s.moon.alt, az: s.moon.az });
     s.planets.forEach(p => { if (p.alt > 3 && p.elong > 12) all.push({ key: 'p:' + p.id, name: p.name, mag: p.mag, alt: p.alt, az: p.az }); });
     s.stars.forEach(t => { if (t.alt > 5) all.push({ key: 's:' + t.n, name: t.n, mag: t.m, alt: t.alt, az: t.az }); });
+    state.satView.forEach(v => { if (v.sat.featured && v.visible) all.push({ key: 'sat:' + v.sat.id, name: v.sat.name, mag: v.mag, alt: v.alt, az: v.az }); });
     all.sort((a, b) => a.mag - b.mag);
     $('#nowTitle').textContent = state.offsetMin === 0 ? 'Самое яркое сейчас' : `Самое яркое в ${hhmm(nowMs())}`;
     $('#nowList').innerHTML = all.slice(0, 8).map(o => `
@@ -386,6 +465,11 @@
 
   document.addEventListener('click', e => {
     const b = e.target.closest('button.row'); if (!b) return;
+    if (b.dataset.jump) {
+      stopPlay();
+      state.offsetMin = Math.round((+b.dataset.jump - Date.now()) / 60000);
+      range.value = state.offsetMin;
+    }
     select(b.dataset.key);
     box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
@@ -419,7 +503,78 @@
       { timeout: 8000 });
   });
 
-  function refreshPanel() { const win = updateToday(); updateTonight(win); updateNowList(); }
+  // ---------- спутники: загрузка орбит и пролёты ----------
+  const dayWord = ms => {
+    const d = new Date(ms), today = new Date(), tm = new Date(Date.now() + 86400e3);
+    return d.toDateString() === today.toDateString() ? 'сегодня' : d.toDateString() === tm.toDateString() ? 'завтра' : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  };
+  const DIR8 = ['север', 'северо-восток', 'восток', 'юго-восток', 'юг', 'юго-запад', 'запад', 'северо-запад'];
+  const dir8 = az => DIR8[Math.floor(((az % 360) + 382.5) / 45) % 8];
+  const passWhen = ps => `${dayWord(ps.start.ms)} ${hhmm(ps.start.ms)}–${hhmm(ps.end.ms)}`;
+
+  function updatePasses() {
+    const p = state.place, from = Date.now() - 15 * 60000;
+    if (!state.sats.length) return;
+    state.passes = state.sats.filter(s => s.featured)
+      .flatMap(s => satPasses(s, from, 24, p.lat, p.lon))
+      .filter(x => x.end.ms > Date.now())
+      .sort((a, b) => a.start.ms - b.start.ms);
+    $('#passes').innerHTML = state.passes.length ? state.passes.map(ps => {
+      const s = ps.sat;
+      let line = `${passWhen(ps)}. Выше всего ${fmt(ps.max.alt)}° на ${dir8(ps.max.az)}е. `
+        + `${ps.fromShadow ? 'Вынырнет из тени' : 'Появится'} на ${dir8(ps.start.az)}е, `;
+      line += ps.endsInShadow ? `погаснет на ${dir8(ps.end.az)}е: войдёт в тень Земли.` : `уйдёт на ${dir8(ps.end.az)}.`;
+      return `<li><button class="row" data-key="sat:${s.id}" data-jump="${ps.max.ms}">
+        <span class="row-name">${s.name}<span class="mag">${fmt(ps.mag, 1)}</span></span>
+        <span class="row-line">${line}</span></button></li>`;
+    }).join('') : '<li class="note">В ближайшие сутки видимых пролётов нет: спутники проходят днём или в тени Земли.</li>';
+    if (state.selected) fillCard();
+  }
+
+  function satStatus() {
+    const tle = state.tle; if (!tle) return;
+    const ageMin = Math.round((Date.now() - tle.t) / 60000);
+    const age = ageMin < 60 ? `${ageMin} мин назад` : ageMin < 2880 ? `${Math.round(ageMin / 60)} ч назад` : `${Math.round(ageMin / 1440)} дн. назад`;
+    let line = `Орбиты: CelesTrak, загружены ${age}. Спутников: ${fmt(state.sats.length)}`;
+    if (state.starlink.length) line += ` + ${fmt(state.starlink.length)} Starlink`;
+    line += '.';
+    if (tle.stale) line += ' Сеть недоступна, показываю сохранённые орбиты.';
+    if (ageMin > 3 * 1440) line += ' Данные старые: спутник может оказаться в стороне от метки.';
+    $('#satStatus').textContent = line;
+  }
+
+  async function loadSats() {
+    try {
+      const [vis, st] = await Promise.all([loadTleGroup('visual'), loadTleGroup('stations')]);
+      // из «станций» берём только сами станции: пристыкованные корабли летят там же
+      state.sats = mergeSats(parseTle(st.text, 'stations').filter(s => SAT_INFO[s.id]), parseTle(vis.text, 'visual'));
+      state.tle = vis;
+      satStatus(); render(); updatePasses(); updateNowList();
+    } catch (e) {
+      $('#passes').innerHTML = '<li class="note">Не получилось загрузить орбиты спутников. Нет сети? Попробую ещё раз через минуту.</li>';
+      setTimeout(loadSats, 60000);
+    }
+  }
+  async function loadStarlink() {
+    $('#satStatus').textContent = 'Загружаю Starlink: это несколько тысяч орбит…';
+    try {
+      state.starlink = parseTle((await loadTleGroup('starlink')).text, 'starlink');
+    } catch (e) {
+      state.starlink = [];
+      $('#satStatus').textContent = 'Starlink не загрузился. Попробуй позже.';
+      return;
+    }
+    satStatus(); render();
+  }
+  $('#tgBright').checked = state.satOpts.bright;
+  $('#tgStarlink').checked = state.satOpts.starlink;
+  $('#tgBright').addEventListener('change', e => { state.satOpts.bright = e.target.checked; store.set('satBright', e.target.checked); render(); });
+  $('#tgStarlink').addEventListener('change', e => {
+    state.satOpts.starlink = e.target.checked; store.set('satStarlink', e.target.checked);
+    if (e.target.checked && !state.starlink.length) loadStarlink(); else render();
+  });
+
+  function refreshPanel() { const win = updateToday(); updateTonight(win); updateNowList(); updatePasses(); satStatus(); }
 
   // ---------- старт ----------
   new ResizeObserver(() => resize()).observe(box);
@@ -427,4 +582,7 @@
   setInterval(() => { if (!state.playing) { render(); } }, 1000);
   setInterval(() => { if (!state.playing) updateNowList(); }, 15000);
   setInterval(refreshPanel, 10 * 60000);
+  loadSats();
+  if (state.satOpts.starlink) loadStarlink();
+  setInterval(loadSats, 3 * 3600e3);                   // свежие орбиты раз в 3 часа
 })();
