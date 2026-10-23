@@ -32,7 +32,7 @@ jobs:
         run: |
           python3 build.py
           mkdir -p _site/data
-          cp index.html _site/
+          cp index.html sw.js _site/
           touch _site/.nojekyll
 
       - name: Скачать орбиты

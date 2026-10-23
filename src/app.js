@@ -332,7 +332,7 @@
       const pl = v.plane;
       const trend = pl.rate > 400 ? ', набирает высоту' : pl.rate < -400 ? ', снижается' : '';
       return `<li><button class="row" data-key="pl:${pl.id}">
-        <span class="row-name">${pl.call || pl.reg || pl.id}${pl.airline ? ` · ${pl.airline}` : ''}</span>
+        <span class="row-name">${pl.call || pl.reg || pl.id}${pl.airline ? ` · ${pl.airline}` : ''}${routeOf(pl.call) ? ` · ${routeOf(pl.call).fromCode}→${routeOf(pl.call).toCode}` : ''}</span>
         <span class="row-line">${pl.type || 'тип неизвестен'}. Высота ${fmt(v.h / 1000, 1)} км${trend}, до него ${fmt(v.range)} км. ${fmt(v.alt)}° над горизонтом, ${rumbWord(v.az)}</span></button></li>`;
     }).join('') : '<li class="note">Над горизонтом сейчас самолётов нет.</li>';
     const ago = Math.round((Date.now() - P.receivedMs) / 1000);
@@ -419,7 +419,10 @@
     } else if (f.kind === 'plane') {
       const pl = o.plane;
       kind = pl.category === 'A7' ? 'Вертолёт' : 'Самолёт';
-      if (pl.airline) facts.push(['Авиакомпания', pl.airline]);
+      const route = routeOf(pl.call);
+      if (route) facts.push(['Маршрут', `${route.from} → ${route.to}`]);
+      else if (route === undefined && pl.call) fetchRoute(pl.call).then(r => { if (r && state.selected && state.selected.key === 'pl:' + pl.id) fillCard(); });
+      if (pl.airline || (route && route.airline)) facts.push(['Авиакомпания', pl.airline || route.airline]);
       if (pl.type) facts.push(['Тип', pl.type + (pl.reg ? `, борт ${pl.reg}` : '')]);
       const trend = pl.rate > 400 ? ' и набирает' : pl.rate < -400 ? ' и снижается' : '';
       facts.push(['Высота полёта', `${fmt(o.h)} м${trend}`], ['Скорость', `${fmt(pl.gs * 1.852)} км/ч`],
@@ -428,6 +431,7 @@
       facts.push(['Данные', `${fmt(Math.max(0, o.age))} с назад${pl.mlat ? ', место вычислено по времени прихода сигнала (MLAT)' : ''}`]);
       text = 'Самолёт сам каждые полсекунды сообщает в эфир, кто он, где и на какой высоте (ADS-B). Эти сообщения ловят тысячи любительских антенн и складывают в общую карту. '
         + 'Между обновлениями приложение двигает самолёт по его скорости и курсу — «упреждение», как у зенитчика.';
+      if (route) text += ' Маршрут взят из справочника adsbdb.com по позывному: это расписание, а не данные из эфира.';
       if (pl.dubious) text += ' Позиция под сомнением: похоже на помехи GPS. Над Израилем GPS часто глушат и подменяют, и самолёты на картах «прыгают» — сам самолёт летит ровно, врёт только его приёмник.';
       if (pl.emergency && pl.emergency !== 'none') text += ' Экипаж передаёт сигнал тревоги.';
     } else if (f.kind === 'sat') {
@@ -640,12 +644,63 @@
       let line = `${passWhen(ps)}. Выше всего ${fmt(ps.max.alt)}° на ${dir8(ps.max.az)}е. `
         + `${ps.fromShadow ? 'Вынырнет из тени' : 'Появится'} на ${dir8(ps.start.az)}е, `;
       line += ps.endsInShadow ? `погаснет на ${dir8(ps.end.az)}е: войдёт в тень Земли.` : `уйдёт на ${dir8(ps.end.az)}.`;
+      const rid = `${s.id}@${Math.round(ps.start.ms / 60000)}`, set = reminders.some(r => r.id === rid);
       return `<li><button class="row" data-key="sat:${s.id}" data-jump="${ps.max.ms}">
         <span class="row-name">${s.name}<span class="mag">${fmt(ps.mag, 1)}</span></span>
-        <span class="row-line">${line}</span></button></li>`;
+        <span class="row-line">${line}</span></button>
+        <div class="row-acts"><a class="mini" href="${calendarLink(ps, line)}" target="_blank" rel="noopener">В календарь</a>
+        <button class="mini" data-remind="${rid}" aria-pressed="${set}">${set ? `Напомню в ${hhmm(ps.start.ms - 5 * 60000)}` : 'Напомнить за 5 мин'}</button></div></li>`;
     }).join('') : '<li class="note">В ближайшие сутки видимых пролётов нет: спутники проходят днём или в тени Земли.</li>';
     if (state.selected) fillCard();
   }
+
+  // ---------- напоминания о пролётах ----------
+  // Календарь надёжнее всего: напомнит, даже если сайт закрыт. Уведомление от сайта — только пока он открыт.
+  const reminders = (store.get('reminders') || []).filter(r => r.at > Date.now() - 10 * 60000);
+  const gcalTime = ms => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  function calendarLink(ps, line) {
+    const q = new URLSearchParams({
+      action: 'TEMPLATE', text: `Пролёт ${ps.sat.name}`,
+      dates: `${gcalTime(ps.start.ms - 5 * 60000)}/${gcalTime(ps.end.ms)}`,
+      details: `${line}\nЯркость ${fmt(ps.mag, 1)}. Карта неба: ${location.origin}${location.pathname}`,
+    });
+    return 'https://calendar.google.com/calendar/render?' + q;
+  }
+  async function notify(text, key) {
+    try {
+      if (Notification.permission === 'granted' && navigator.serviceWorker) {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification('Небесный радар', { body: text, tag: key, vibrate: [200, 100, 200] });
+      }
+    } catch (e) { /* без уведомлений — остаётся подсказка на странице */ }
+    if (window.SkyLearn) window.SkyLearn.tip(text, 'pass', key);
+  }
+  function checkReminders() {
+    const now = Date.now();
+    for (const r of reminders.slice()) {
+      if (now >= r.at - 5 * 60000) {
+        notify(`Через ${Math.max(0, Math.round((r.at - now) / 60000))} мин: ${r.text}`, 'sat:' + r.sat);
+        reminders.splice(reminders.indexOf(r), 1);
+      }
+    }
+    store.set('reminders', reminders);
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-remind]'); if (!b) return;
+    const id = b.dataset.remind, i = reminders.findIndex(r => r.id === id);
+    if (i >= 0) reminders.splice(i, 1);
+    else {
+      const ps = state.passes.find(x => `${x.sat.id}@${Math.round(x.start.ms / 60000)}` === id); if (!ps) return;
+      reminders.push({ id, sat: ps.sat.id, at: ps.start.ms,
+        text: `${ps.sat.name} появится на ${dir8(ps.start.az)}е в ${hhmm(ps.start.ms)}, поднимется до ${fmt(ps.max.alt)}°.` });
+    }
+    store.set('reminders', reminders);
+    updatePasses();
+    // разрешение на уведомления спрашиваем после — ответ может прийти не сразу
+    if (i < 0 && window.Notification && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+  });
+  setInterval(checkReminders, 15000);
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
   function satStatus() {
     const tle = state.tle; if (!tle) return;

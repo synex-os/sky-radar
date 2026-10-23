@@ -123,6 +123,9 @@ ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .ar-row label { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: #dfe8f7; flex: 1 1 180px;
   background: rgba(6,10,21,.62); padding: 7px 10px; border-radius: 8px; }
 .ar-row input[type=range] { flex: 1; min-width: 0; accent-color: var(--scope); }
+.row-acts { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 10px 8px; }
+.mini { font-size: 12.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--rule); color: var(--dim); text-decoration: none; }
+.mini[aria-pressed="true"] { color: var(--sat); border-color: color-mix(in srgb, var(--sat) 50%, var(--rule)); }
 .layers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .chip { font-size: 13px; padding: 5px 10px; border-radius: 999px; color: var(--dim); }
 .chip[aria-pressed="true"] { color: var(--ink); border-color: color-mix(in srgb, var(--scope) 60%, var(--rule));

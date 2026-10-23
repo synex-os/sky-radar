@@ -99,3 +99,49 @@ async function fetchPlanes(proxy, lat, lon) {
   if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
   return { src: j.src, receivedMs: Date.now(), planes: preparePlanes(j.ac || [], Date.now()) };
 }
+
+// ---------- маршрут рейса: откуда и куда (adsbdb.com, по позывному) ----------
+// В ADS-B маршрута нет — только позывной. Справочник adsbdb знает расписание по позывному; это «план»,
+// а не факт: изредка позывной на сегодня другой. Спрашиваем, только когда открыли карточку, и помним сутки.
+const CITY_RU = {
+  TLV: 'Тель-Авив', ETM: 'Эйлат (Рамон)', HFA: 'Хайфа', BUD: 'Будапешт', SOF: 'София', ATH: 'Афины', SKG: 'Салоники',
+  LCA: 'Ларнака', PFO: 'Пафос', IST: 'Стамбул', SAW: 'Стамбул', AYT: 'Анталья', RHO: 'Родос', HER: 'Ираклион',
+  CDG: 'Париж', ORY: 'Париж', BVA: 'Париж', LHR: 'Лондон', LGW: 'Лондон', LTN: 'Лондон', STN: 'Лондон',
+  FCO: 'Рим', CIA: 'Рим', MXP: 'Милан', BGY: 'Милан', LIN: 'Милан', VCE: 'Венеция', NAP: 'Неаполь',
+  FRA: 'Франкфурт', MUC: 'Мюнхен', BER: 'Берлин', DUS: 'Дюссельдорф', HAM: 'Гамбург', VIE: 'Вена',
+  ZRH: 'Цюрих', GVA: 'Женева', AMS: 'Амстердам', BRU: 'Брюссель', CRL: 'Брюссель', WAW: 'Варшава', KRK: 'Краков',
+  PRG: 'Прага', OTP: 'Бухарест', RMO: 'Кишинёв', BEG: 'Белград', TBS: 'Тбилиси', BUS: 'Батуми', EVN: 'Ереван',
+  BCN: 'Барселона', MAD: 'Мадрид', LIS: 'Лиссабон', OPO: 'Порту', DXB: 'Дубай', AUH: 'Абу-Даби', DOH: 'Доха',
+  CAI: 'Каир', AMM: 'Амман', JFK: 'Нью-Йорк', EWR: 'Нью-Йорк', BKK: 'Бангкок', DEL: 'Дели', BOM: 'Мумбаи',
+  RIX: 'Рига', VNO: 'Вильнюс', TLL: 'Таллин', HEL: 'Хельсинки', CPH: 'Копенгаген', ARN: 'Стокгольм', OSL: 'Осло',
+};
+const routeCache = new Map();
+const cityOf = a => (a && (CITY_RU[a.iata_code] || a.municipality || a.name)) || '?';
+
+function routeOf(call) {
+  if (!call) return null;
+  if (routeCache.has(call)) return routeCache.get(call);
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('skyradar.route.' + call)); } catch (e) { /* нет хранилища */ }
+  if (saved && Date.now() - saved.t < 86400e3) { routeCache.set(call, saved.r); return saved.r; }
+  return undefined;                                  // ещё не спрашивали
+}
+
+async function fetchRoute(call) {
+  if (!call || routeOf(call) !== undefined) return routeOf(call);
+  routeCache.set(call, null);                         // запрос в пути — второй не шлём
+  let r = null;
+  try {
+    const res = await fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(call)}`, { signal: AbortSignal.timeout(10000) });
+    if (res.ok) {
+      const fr = (await res.json()).response.flightroute;
+      if (fr && fr.origin && fr.destination) {
+        r = { from: cityOf(fr.origin), to: cityOf(fr.destination), fromCode: fr.origin.iata_code, toCode: fr.destination.iata_code,
+          airline: fr.airline && fr.airline.name };
+      }
+    }
+  } catch (e) { routeCache.delete(call); return null; }  // сеть подвела — спросим в следующий раз
+  routeCache.set(call, r);
+  try { localStorage.setItem('skyradar.route.' + call, JSON.stringify({ t: Date.now(), r })); } catch (e) { /* не страшно */ }
+  return r;
+}
